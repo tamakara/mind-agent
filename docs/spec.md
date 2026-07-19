@@ -10,22 +10,21 @@
 - MindAgent 生成的内部 ID MUST 使用 UUID4；
 - 持久时间 MUST 使用 UTC RFC 3339；
 - API 字段 MUST 使用 `snake_case`；
-- OneBot 提供的用户、群、消息和事件 ID MUST 作为不透明字符串处理。
+- OneBot 提供的用户、消息和事件 ID MUST 作为不透明字符串处理。
 
 ## 2. 用户、Session 与 Workspace
 
 - 渠道身份唯一键 MUST 为 `(channel, account_id, platform_user_id)`；
-- 首次私聊或首次群聊 `@Agent` MUST 原子创建用户、Session 和 Workspace；
-- 普通未触发群消息 MUST NOT 创建用户；
+- 首次私聊 MUST 原子创建用户、Session 和 Workspace；
 - 每名用户 MUST 只有一个 Session，且该 Session MUST 与用户稳定绑定；
 - 每名用户 MUST 只有一个 Workspace；
-- 同一用户从任意群聊或私聊触发的 Agent run MUST 进入该用户的同一个 Session；
-- 群聊和私聊的账号、类型与窗口 ID MUST 只作为触发来源、渠道消息查询范围和回复投递目标，不得用于创建或选择 Session、Workspace；
+- 同一用户的每次私聊触发的 Agent run MUST 进入该用户的同一个 Session；
+- 私聊的账号、类型与窗口 ID MUST 只作为触发来源、渠道消息查询范围和回复投递目标，不得用于创建或选择 Session、Workspace；
 - 同一用户 Session 的 run MUST 串行执行，不同用户 Session MAY 并发执行；
 - 被禁用用户 MUST NOT 启动新 Agent run 或任务；
 - 普通用户 MUST NOT 登录 Web，管理员可以查看和管理全部 Workspace 文件。
 
-所有文件路径 MUST 在解析后仍位于目标 Workspace、人设目录或知识库目录内。路径穿越和符号链接逃逸 MUST 被拒绝。
+所有文件路径 MUST 在解析后仍位于目标 Workspace 或知识库目录内；全局人设固定使用数据目录根下的 `AGENTS.md` 与 `SOUL.md`，用户人设文件固定使用其 Workspace 下的 `PROFILE.md` 与 `MEMORY.md`。路径穿越和符号链接逃逸 MUST 被拒绝。
 
 ## 3. 统一渠道消息模型
 
@@ -39,8 +38,8 @@ OneBot 实时事件和历史查询结果 MUST 使用同一个转换器生成 `Ch
   "address": {
     "channel": "qq",
     "account_id": "bot-main",
-    "conversation_type": "group",
-    "conversation_id": "123456"
+    "conversation_type": "private",
+    "conversation_id": "10001"
   },
   "sender": {
     "user_id": "10001",
@@ -61,7 +60,7 @@ OneBot 实时事件和历史查询结果 MUST 使用同一个转换器生成 `Ch
 - `message_id`；
 - `address.channel`，首版固定为 `qq`；
 - `address.account_id`；
-- `address.conversation_type`：`private` 或 `group`；
+- `address.conversation_type`：首版固定为 `private`；
 - `address.conversation_id`；
 - `sender.user_id` 与 `sender.display_name`；
 - `created_at`；
@@ -89,15 +88,14 @@ OneBot 实时事件和历史查询结果 MUST 使用同一个转换器生成 `Ch
 ## 4. 触发与渠道消息历史
 
 - 私聊消息 MUST 触发 Agent；
-- 群聊消息只有明确提及当前 Bot 时才能触发 Agent；
-- 普通群消息 MUST NOT 触发、创建用户或写入 Workspace；
-- 群聊或私聊消息记录 MUST 通过 `query_channel_history` 按需查询，不得全量注入 Session 上下文；
-- `query_channel_history` MUST 绑定当前触发消息的 `ChannelAddress`，Agent 不得指定其他群或私聊窗口；
-- 首次查询的 `anchor_message_id` 默认使用触发消息 ID；Agent MAY 指定当前窗口中的另一条消息作为锚点，查询该消息及其之前的记录；
+- 本地 Session 历史是常规上下文和历史回忆的首选来源；
+- `query_channel_history` 仅用于本地历史缺失、Agent 启用前记录或服务漏接期间的 QQ 原始记录补偿，不得作为常规上下文来源；
+- `query_channel_history` MUST 绑定当前触发消息的 `ChannelAddress`，Agent 不得指定其他私聊窗口；
+- 首次查询的 `anchor_message_id` 默认使用触发消息 ID；Agent MAY 指定当前私聊中的另一条消息作为锚点，查询该消息及其之前的记录；
 - 后续分页 MUST 使用 OneBotGateway 返回的不透明 `cursor`，Agent 不得构造或解析 cursor；
 - 查询结果 MUST 返回 `ChannelMessagePage`，至少包含 `messages`、`next_cursor` 和 `has_more`；其中每条 `messages` MUST 与实时事件使用相同的 `ChannelMessage` 格式，并按时间正序排列；
-- OneBotGateway MUST 验证锚点消息属于当前 `ChannelAddress`；无法验证或发生跨窗口定位时 MUST 拒绝；
-- 查询结果只用于当前 run，MUST NOT 写入 Session 历史、Workspace 或知识库；
+- OneBotGateway MUST 验证锚点消息属于当前 `ChannelAddress`；无法验证或发生跨私聊窗口定位时 MUST 拒绝；
+- 查询结果只用于当前 run，MUST NOT 写入 Session 历史、Workspace、headline 索引或知识库；
 - OneBot 不支持历史查询时 MUST 返回明确错误，不得伪造内容。
 
 ## 5. 简化 Scroll
@@ -111,39 +109,64 @@ MUST 持久化：
 - 工具调用与工具结果；
 - Sub-agent 和验收 run 的关联事件。
 
+每个完整用户回合 MUST 共享一个 `turn_id`，并覆盖该用户消息、该轮工具调用/结果和最终 Agent 回复；最终 Agent 回复 MUST 保存一个单行 `headline`。`headline` MUST 不超过 200 个字符，目标长度约 15 个词；缺失或格式无效时，使用该回合首条非空用户文本的首行截断值作为确定性回退，不额外调用模型生成标题。
+
 Scroll MUST 遵循：
 
 1. 每条历史记录拥有当前 Workspace 内递增的 `seq`；
-2. 模型上下文只加载当前用户 Session 的最近完整轮次，不按群聊或私聊窗口过滤；
+2. 模型上下文只加载当前用户 Session 的最近完整轮次，不得拆开一个回合；
 3. 达到 token 预算时，从最旧的已完成轮次开始驱逐；
 4. 当前活动轮次和配对的 tool call/result MUST 保持完整；
-5. 被驱逐区间使用 `seq lo-hi` 占位，不生成摘要；
+5. 被驱逐区间使用 `[context compressed]` 索引标识；最近 20 个回合逐条显示 `seq_lo-seq_hi · headline`，更早回合合并为一个 seq 区间并保留首尾 headline；
 6. Agent 只获得 `recall_session_history(expand)` 和 `recall_session_history(search)`；
 7. recall MUST 强制绑定当前用户 Session，不得跨用户 Session 读取；
-8. 历史逐字保存，不生成 headline、分层索引、用户画像或长期记忆。
+8. 历史逐字保存；headline 只用于导航，不得作为事实来源；用户长期资料和决策仅通过 `PROFILE.md`/`MEMORY.md` 维护，不跨用户 Session。
 
-`recall_session_history` 读取 MindAgent 自己保存的用户 Session 历史；`query_channel_history` 读取 QQ 当前窗口的外部消息记录。二者 MUST 使用不同的工具名、参数类型和返回类型，不得复用或隐式回退。
+`recall_session_history` 读取 MindAgent 自己保存的用户 Session 历史；`query_channel_history` 读取 QQ 当前私聊窗口的外部消息记录作为缺口补偿。二者 MUST 使用不同的工具名、参数类型和返回类型，不得复用或隐式回退。
 
-`expand` 按 `seq` 区间返回 `SessionHistoryEntry`，`search` 只在当前用户 Session 的逐字文本中检索。两者 MUST 为只读结构化操作，返回值不得伪装成 `ChannelMessage`。
+`expand` 按 `seq` 区间返回按 `turn_id` 分组的逐字 `SessionHistoryEntry` 及其 `headline`；`search` MUST 同时检索 headline 和当前用户 Session 的逐字文本，并返回匹配回合的 seq 区间。两者 MUST 为只读结构化操作，返回值不得伪装成 `ChannelMessage`。
 
-## 6. 全局人设
+## 6. 人设与用户记忆
 
-全局人设目录固定包含：
+每次 Agent run MUST 按以下顺序全量注入四个 Markdown 文件：
+
+1. `<MINDAGENT_DATA_DIR>/AGENTS.md`；
+2. `<MINDAGENT_DATA_DIR>/SOUL.md`；
+3. `<MINDAGENT_DATA_DIR>/workspaces/<user-id>/PROFILE.md`；
+4. `<MINDAGENT_DATA_DIR>/workspaces/<user-id>/MEMORY.md`。
+
+文件正文 MUST 以文件标题分隔后完整注入；可选 YAML frontmatter 只作为文件元数据剥离。全局文件规则优先于用户文件，用户文件不得覆盖 AGENTS.md 或 SOUL.md 的安全和权限约束。
+
+- `AGENTS.md` MUST 描述全局工作规则、安全边界和工具约束；
+- `SOUL.md` MUST 描述全局 Agent 身份、性格、语气和行为原则；
+- `PROFILE.md` MUST 只描述当前用户的称呼、背景和稳定偏好；
+- `MEMORY.md` MUST 只保存当前用户已确认的长期事实、决策、工作约定和工具设置，不保存原始聊天日志；
+- 创建应用时 MUST 初始化全局 AGENTS.md/SOUL.md，创建用户 Workspace 时 MUST 初始化 PROFILE.md/MEMORY.md；
+- 每次 Agent run MUST 读取四个文件的最新内容，不维护缓存；文件更新从下一次 Agent run 生效；
+- 管理员写入 AGENTS.md/SOUL.md MUST 使用临时文件、flush 和原子替换，失败时保留旧版本；
+- 默认模板可以参考 QwenPaw 的职责和章节结构，但 MUST NOT 注入 MindAgent 未实现的 Skills、heartbeat 或群聊规则。
+
+Agent MUST NOT 通过通用 Workspace 文件工具修改、删除或重命名 PROFILE.md/MEMORY.md；只能调用以下当前用户范围内的专用工具：
 
 ```text
-persona/
-├── AGENTS.md
-├── SOUL.md
-└── PROFILE.md
+read_user_context_file(
+    file: "PROFILE.md" | "MEMORY.md"
+) -> {content, revision, size_bytes}
+
+replace_user_context_file(
+    file: "PROFILE.md" | "MEMORY.md",
+    content: string,
+    expected_revision: string
+) -> {revision, size_bytes, effective_from: "next_run"}
 ```
 
-- 三个文件 MUST 按 `AGENTS.md`、`SOUL.md`、`PROFILE.md` 顺序加载；
-- `PROFILE.md` MUST 只描述 MindAgent，不得保存具体用户资料；
-- 管理员可以通过 Web 读取和编辑三个文件；
-- 写入 MUST 使用临时文件和原子替换；
-- 每次 Agent run MUST 读取最新内容，无需重启；
-- 首版 MUST NOT 增删、启停或重排人设文件；
-- 首版 MUST NOT 实现 ZIP 导入、语言模板或 `BOOTSTRAP.md`。
+- 工具 MUST 从当前 Session 推导 Workspace，不接受 `user_id` 或文件路径参数；
+- `PROFILE.md` 和 `MEMORY.md` 单文件大小 MUST NOT 超过 32 KiB，内容 MUST 为 UTF-8；
+- revision 不匹配 MUST 返回 `PERSONA_REVISION_CONFLICT`，超限 MUST 返回 `PERSONA_FILE_TOO_LARGE`，编码无效 MUST 返回 `PERSONA_INVALID_ENCODING`，失败时保留旧版本；
+- 写入 MUST 使用临时文件、flush 和原子替换；
+- Agent 只有在用户明确要求记住，或形成已确认的稳定事实、偏好或决策时才可更新；敏感信息默认不得写入；
+- 不实现自动提炼、后台 dream 或 `memory_search`；`history.db` 和 `recall_session_history` 仍是原始事实来源；
+- 管理员可以通过 Web 管理全局 AGENTS.md/SOUL.md，并查看或维护用户 PROFILE.md/MEMORY.md。
 
 ## 7. 知识库
 
@@ -247,13 +270,13 @@ REST 错误响应统一为：
 
 ## 10. 首版验收
 
-1. 两名用户在同一群中并发 `@Agent`，上下文、文件和任务互不串用；
-2. 普通群消息不触发、不创建用户、不落盘；
-3. OneBot 实时事件与历史查询结果可以转换为同一 `ChannelMessage` 模型，并完成规定的输入输出闭环；
-4. Scroll 驱逐后可以在当前用户 Session 内展开和搜索原文；
-5. 同一用户从私聊和不同群聊触发时复用同一 Session 和 Workspace，不同用户之间不能 recall；`recall_session_history` 与 `query_channel_history` 的数据源和返回类型可明确区分；
-6. 修改任一人设文件后，下一次 Agent run 使用新内容；
+1. 两名用户并发私聊 Agent 时，上下文、文件和任务互不串用；
+2. 私聊消息可以触发 Agent；本地 Session 历史缺失时，可以按需查询当前私聊的 QQ 原始历史；
+3. OneBot 私聊实时事件与历史查询结果可以转换为同一 `ChannelMessage` 模型，并完成规定的输入输出闭环；
+4. Scroll 驱逐后可以看到 headline 导航，并在当前用户 Session 内展开和搜索原文；
+5. 同一用户的多次私聊复用同一 Session 和 Workspace，不同用户之间不能 recall；`recall_session_history` 与 `query_channel_history` 的数据源和返回类型可明确区分；
+6. 修改全局 AGENTS.md/SOUL.md 后所有用户的下一次 run 使用新内容；修改用户 PROFILE.md/MEMORY.md 后只有该用户的下一次 run 使用新内容；
 7. TXT 与 Markdown 可以按配置切块并异步建立向量索引；同名替换、文档重建或 Embedding 配置迁移失败时旧 active 索引仍可用，Agent 只能搜索、列举和按行读取；
 8. Sub-agent 候选结果经过主 Agent 验收，最多自动返工一次；
 9. QQ 状态页只读，系统不存在 Skills、备份、迁移或多渠道管理入口；
-10. 路径穿越、符号链接逃逸和跨 Workspace 文件访问均被拒绝。
+10. 路径穿越、符号链接逃逸、跨 Workspace 文件访问和通过通用文件工具修改 PROFILE.md/MEMORY.md 均被拒绝。

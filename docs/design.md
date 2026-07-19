@@ -37,7 +37,7 @@
 
 ```mermaid
 flowchart LR
-    QQ[QQ 私聊与群聊] <--> NC[NapCat]
+    QQ[QQ 私聊] <--> NC[NapCat]
     Admin[管理员浏览器] <--> Web[FastAPI + React]
 
     subgraph App[MindAgent 单进程]
@@ -45,24 +45,21 @@ flowchart LR
         ID[用户与 Workspace]
         AR[AgentRuntime]
         TM[TaskManager]
-        PM[PersonaManager]
         KB[KnowledgeRAG]
 
         Web --> ID
         Web --> TM
-        Web --> PM
         Web --> KB
         OB --> ID
         ID --> AR
         AR --> TM
-        AR --> PM
         AR --> KB
         TM --> AR
     end
 
     NC <-->|OneBot v11 WebSocket| OB
     App --> DB[(app.db + knowledge.db + 每用户 history.db)]
-    App --> FS[(Workspace / Persona / Knowledge / Chroma)]
+    App --> FS[(Persona / Workspace / Knowledge / Chroma)]
     AR --> LLM[OpenAI 兼容模型]
     KB --> EMB[OpenAI 兼容或 Ollama Embedding]
 ```
@@ -85,8 +82,8 @@ flowchart LR
 
 - 接收 OneBot v11 事件并去重；
 - 把 OneBot 消息段转换为 `ChannelMessage`；
-- 判断私聊或群 `@Agent` 是否触发；
-- 按需查询当前群聊或私聊的消息记录，并读取 QQ 文件；
+- 判断私聊消息并触发 Agent；
+- 按需查询当前私聊的消息记录，并读取 QQ 文件；
 - 把统一输出内容转换为 OneBot 动作；
 - 提供只读 QQ 连接状态。
 
@@ -94,7 +91,7 @@ flowchart LR
 
 OneBotGateway 只向运行层输出 `ChannelMessage`，运行层不依赖 OneBot 数据结构。首版不设计渠道注册、动态能力发现或第二渠道实现。
 
-统一类型采用 `ChannelMessage`、`ChannelAddress`、`MessageContent`、`TextContent`、`MentionContent`、`QuoteContent`、`ImageContent`、`AudioContent`、`VideoContent`、`FileContent` 和 `UnsupportedContent`。路由字段使用显式的强类型数据。
+统一类型采用 `ChannelMessage`、`ChannelAddress`、`MessageContent`、`TextContent`、`MentionContent`、`QuoteContent`、`ImageContent`、`AudioContent`、`VideoContent`、`FileContent` 和 `UnsupportedContent`。`ChannelAddress.conversation_type` 首版固定为 `private`，路由字段使用显式的强类型数据。
 
 实时事件和历史查询结果必须调用同一个 `OneBotMessageConverter`，并完整保留 text、mention、quote、image、audio、video、file 和 unsupported content。
 
@@ -103,18 +100,18 @@ OneBotGateway 只向运行层输出 `ChannelMessage`，运行层不依赖 OneBot
 1. OneBotGateway 转换消息并执行触发判断；
 2. 首次有效触发时创建用户、Session 和 Workspace；
 3. 根据用户 ID 取得该用户唯一 Session 的执行锁；
-4. AgentRuntime 加载人设、用户 Session 的 Scroll 窗口、当前触发路由和内置工具；
+4. AgentRuntime 加载人设、用户 Session 的 Scroll 窗口、当前私聊地址和内置工具；
 5. LangGraph 执行主 Agent；
 6. OneBotGateway 渲染并发送最终结果；
 7. 触发消息、回复和工具结果逐字写入 `history.db`。
 
-不同用户的 Session 锁可以并发；同一用户无论从哪个群聊或私聊触发，都按到达顺序在同一 Session 中执行。触发路由只用于查询本次交互相关的渠道消息和投递回复，不参与 Session 或 Workspace 的选择。
+不同用户的 Session 锁可以并发；同一用户的私聊消息按到达顺序在同一 Session 中执行。私聊地址只用于查询本次交互相关的渠道消息和投递回复，不参与 Session 或 Workspace 的选择。
 
 身份解析后由运行层构造 `AgentRequest`，至少包含 `run_id`、`user_id`、`session_id` 和 `trigger_message: ChannelMessage`；Session 标识不得塞回 `ChannelAddress`。Agent 最终返回 `AgentResponse`，其中 `content: MessageContent[]` 与 `artifact_refs` 交给 OneBotGateway 渲染。
 
 ### 3.3 渠道消息历史查询
 
-`query_channel_history` 专门查询当前触发窗口的 QQ 消息记录：
+`query_channel_history` 专门查询当前私聊的 QQ 消息记录：
 
 ```text
 query_channel_history(
@@ -126,46 +123,58 @@ query_channel_history(
 ```
 
 - 首次调用使用 `anchor_message_id`，省略时默认定位到当前触发消息；`cursor` 只用于后续向更早消息翻页，两者不得同时提供；
-- Gateway 优先调用 OneBot `get_msg` 验证锚点并取得可用于定位的 `message_seq`，再按当前 `ChannelAddress` 调用 NapCat 的 `get_group_msg_history` 或 `get_friend_msg_history`；
+- Gateway 优先调用 OneBot `get_msg` 验证锚点并取得可用于定位的 `message_seq`，再按当前 `ChannelAddress` 调用 NapCat 的 `get_friend_msg_history`；
 - 如果 NapCat 版本不能由消息 ID 稳定定位，Gateway 返回结构化 `ANCHOR_UNSUPPORTED`，不得悄悄改成“最新 N 条”；
 - 返回页包含统一的 `ChannelMessage[]`、不透明 `next_cursor` 和 `has_more`，消息统一按时间正序排列；
 - 每条历史记录经过与实时事件相同的 OneBot 转换、文件注册和降级处理；
-- Gateway 校验返回消息仍属于当前账号、会话类型和窗口，Agent 不能借工具读取其他群或其他私聊；
-- 查询页只存在于当前 run，不写入 `history.db`。
+- Gateway 校验返回消息仍属于当前账号、`private` 会话和当前窗口，Agent 不能借工具读取其他私聊；
+- 查询页只存在于当前 run，不写入 `history.db`、headline 索引或 Workspace。
 
 `message_id` 是 Agent 可见的稳定定位键，`message_seq` 和分页 cursor 是 OneBot/NapCat 实现细节。首版只保证“定位某条消息并向更早记录翻页”；向更新消息查询或任意时间范围检索留待 OneBotGateway 能力明确后再增加。
+
+`query_channel_history` 是 QQ 原始历史的补偿工具。Agent 应优先使用 `recall_session_history`；只有本地历史缺失、Agent 启用前记录或服务漏接时才调用它。
 
 ## 4. 简化 Scroll
 
 每个用户 Workspace 拥有独立 `history.db`，其中 `session_history` 至少保存：
 
 - `seq`；
+- `turn_id`；
 - `trigger_account_id`；
-- `trigger_conversation_type`；
+- `trigger_conversation_type`（首版固定为 `private`）；
 - `trigger_conversation_id`；
 - `role`；
 - `content`；
 - `tool_call_id`；
+- `headline`（最终 Agent 回复的单行导航标题）；
 - `created_at`。
+
+一个完整回合从真实用户消息开始，覆盖该轮工具调用、工具结果和最终 Agent 回复；同一回合的记录共享 `turn_id`，回合范围由其最小和最大 `seq` 确定。最终 Agent 回复在文本末尾生成隐藏 headline，例如：
+
+```html
+<!-- ⟦用户确认采用 OpenAI Embedding⟧ -->
+```
+
+headline 不超过 200 个字符，目标约 15 个词；渲染到 QQ 或管理台时移除隐藏注释，但正文和独立 headline 字段均保留。缺失或格式无效时，用该回合首条非空用户文本的首行截断值回退，不额外调用模型生成标题。
 
 上下文构建流程：
 
 1. 将新消息写入 `history.db`；
-2. 加载当前用户 Session 最近的完整轮次，不按触发路由过滤；
+2. 加载当前用户 Session 最近的完整轮次，不拆开回合；
 3. 若超过模型 token 预算，驱逐最旧的已完成轮次；
-4. 在上下文中留下 `[history evicted: seq lo-hi]` 占位；
+4. 在上下文中留下 `[context compressed]` 索引：最近 20 个被驱逐回合逐条显示 `seq_lo-seq_hi · headline`，更早回合合并为一个 seq 区间并保留首尾 headline；
 5. Agent 可调用 `recall_session_history` 展开区间或搜索当前用户 Session。
 
 `recall_session_history` 提供：
 
 ```text
-expand(lo, hi) -> 逐字历史
-search(query, limit) -> 当前用户 Session 命中记录
+expand(lo, hi) -> 按 turn_id 分组的逐字历史与 headline
+search(query, limit) -> 当前用户 Session 中匹配 headline 或正文的回合与 seq 区间
 ```
 
-实现不生成摘要、headline 或多级索引，不提供 Python REPL，也不读取其他用户的 Session。若 SQLite 支持 FTS5，`search` 使用 FTS5；否则降级为参数化 `LIKE`。
+实现不生成摘要，不提供 Python REPL，也不读取其他用户的 Session。headline 只用于导航，不能替代正文事实；精选的用户资料和长期决策由 PROFILE.md/MEMORY.md 独立维护。若 SQLite 支持 FTS5，`search` 同时索引 headline 和 content；否则降级为参数化 `LIKE`。
 
-`recall_session_history` 返回内部 `SessionHistoryEntry`（如 `seq`、`role`、`content`、`tool_call_id`），数据源是用户 Workspace 的 `history.db`。它与返回 `ChannelMessagePage` 的 `query_channel_history` 是两个独立工具：前者回忆 Agent 与该用户的交互，后者查看当前 QQ 窗口的外部聊天记录。
+`recall_session_history` 返回内部 `SessionHistoryEntry`（如 `seq`、`turn_id`、`role`、`content`、`tool_call_id`、`headline`），数据源是用户 Workspace 的 `history.db`。它与返回 `ChannelMessagePage` 的 `query_channel_history` 是两个独立工具：前者回忆 Agent 与该用户的交互，后者只在缺口场景查看当前 QQ 私聊的外部聊天记录。
 
 ## 5. Agent 与异步任务
 
@@ -215,23 +224,30 @@ LangGraph 本身不内置 Langfuse 后端。Langfuse 通过 LangChain CallbackHa
 
 Langfuse 通过环境变量启用，未配置或上报失败时必须退化为本地结构化日志，不得影响 Agent run。服务关闭时在有限超时内 flush。
 
-## 6. 全局人设
+## 6. 人设与用户记忆
 
-全局人设位于：
+人设采用两层作用域：
+
+- 全局 `AGENTS.md` 和 `SOUL.md` 由管理员维护，对所有用户生效；
+- 每个用户 Workspace 下的 `PROFILE.md` 和 `MEMORY.md` 只对该用户生效。
+
+AgentRuntime 每次 run 通过文件存储层读取四个文件，剥离可选 YAML frontmatter，并按 `AGENTS.md → SOUL.md → PROFILE.md → MEMORY.md` 顺序以文件标题分隔后完整拼入系统提示词。Prompt 外层固定声明全局规则优先，用户文件不得覆盖 AGENTS.md/SOUL.md 的安全和权限约束；不维护内容缓存或文件监听器。
+
+初始化模板沿用 QwenPaw 的职责、语气和章节结构，但移除 Skills、heartbeat、群聊等未支持能力。AGENTS.md 保存工作规则与安全约束，SOUL.md 保存 Agent 身份与行为原则，PROFILE.md 保存当前用户资料，MEMORY.md 保存当前用户已确认的长期事实、决策、工作约定和工具设置。
+
+PROFILE.md/MEMORY.md 是 Workspace 特殊文件：通用文件 API 和 Agent 通用文件工具可以读取，但不得修改、删除或重命名；写入必须使用专用工具。专用工具不接受路径或 user_id，从当前 Session 推导 Workspace：
 
 ```text
-persona/
-├── AGENTS.md
-├── SOUL.md
-└── PROFILE.md
+read_user_context_file(file) -> {content, revision, size_bytes}
+replace_user_context_file(file, content, expected_revision)
+    -> {revision, size_bytes, effective_from: "next_run"}
 ```
 
-`PersonaManager` 只提供固定三文件的读取与保存：
+`file` 只允许 `PROFILE.md` 或 `MEMORY.md`。revision 使用文件内容 SHA-256；替换前比较 `expected_revision`，不一致返回 `PERSONA_REVISION_CONFLICT`。新内容按 UTF-8 编码后不得超过 32 KiB，超限返回 `PERSONA_FILE_TOO_LARGE`。通过校验后写入同目录临时文件、flush 并原子替换；任何失败均保留旧文件。工具更新从下一次 run 生效。
 
-- Web 保存时校验文件名并原子替换；
-- 每次 Agent run 按固定顺序读取，不维护缓存和文件监听器；
-- 初始化时缺少文件则从内置中文模板创建；
-- 不实现文件增删、启停、排序和首次引导流程。
+读取工具返回包含 frontmatter 的原始文件内容，便于完整替换时保留元数据；Prompt 构建器只在注入时剥离 frontmatter。无效 UTF-8 返回 `PERSONA_INVALID_ENCODING`。管理员写入全局 AGENTS.md/SOUL.md 同样使用临时文件、flush 和原子替换，但不设置固定大小上限。
+
+Agent 仅在用户明确要求记住，或稳定事实、偏好和决策已经确认时更新文件；默认不记录敏感信息。不实现自动提炼、后台 dream 或 memory_search，history.db 和 recall_session_history 继续作为原始聊天事实来源。
 
 ## 7. 知识库
 
@@ -300,10 +316,8 @@ read_knowledge_document(
 ```text
 <MINDAGENT_DATA_DIR>/
 ├── app.db
-├── persona/
-│   ├── AGENTS.md
-│   ├── SOUL.md
-│   └── PROFILE.md
+├── AGENTS.md
+├── SOUL.md
 ├── knowledge/
 │   ├── knowledge.db
 │   ├── originals/
@@ -312,6 +326,8 @@ read_knowledge_document(
 │   └── chroma/
 ├── workspaces/
 │   └── <user-id>/
+│       ├── PROFILE.md
+│       ├── MEMORY.md
 │       ├── history.db
 │       ├── files/
 │       ├── artifacts/
@@ -337,12 +353,15 @@ read_knowledge_document(
 | 登录与概览 | `/api/v1/auth/*`、`/healthz`、`/readyz` |
 | 用户 | `/api/v1/users/*` |
 | Workspace 文件 | `/api/v1/workspaces/*` |
-| 人设 | `/api/v1/persona/*` |
+| 全局人设 | `GET/PUT /api/v1/persona/{file}` |
+| 用户资料与记忆 | `GET/PUT /api/v1/workspaces/{user_id}/context/{file}` |
 | 知识库 | `/api/v1/knowledge/*` |
 | 任务 | `/api/v1/tasks/*` |
 | 模型 | `/api/v1/model/*` |
 | QQ 状态 | `/api/v1/qq/status` |
 | 测试聊天 | `/api/v1/chat/stream` |
+
+全局人设接口的 `{file}` 只允许 `AGENTS.md` 或 `SOUL.md`；用户资料接口的 `{file}` 只允许 `PROFILE.md` 或 `MEMORY.md`，并复用 32 KiB、revision 比较和原子替换规则。管理员 Web 必须先读取 revision，再提交替换。
 
 知识库 API 固定为：
 
@@ -365,7 +384,7 @@ read_knowledge_document(
 
 QQ 状态接口只返回连接状态、登录账号、连接时间和最近错误。QQ 连接参数通过环境变量或本地配置提供，不在 Web 修改。
 
-首版不存在 Skills、记忆、备份恢复、迁移、渠道管理和通用设置页面或 API。
+首版不存在 Skills、自动记忆整理、备份恢复、迁移、渠道管理和通用设置页面或 API；用户 PROFILE.md/MEMORY.md 仅通过上述专用工具和管理员人设管理入口维护。
 
 ## 10. 代码目录
 
@@ -377,7 +396,6 @@ src/mindagent/
 ├── onebot/       # OneBotGateway 与消息转换
 ├── workspaces/   # 用户与 Workspace
 ├── tasks/        # 异步任务与验收
-├── persona/      # 固定人设文件
 ├── knowledge/    # RAG 配置、文档、切块、索引任务与 Agent 工具
 └── storage/      # aiosqlite 与安全文件访问
 console/          # React 管理台
@@ -390,10 +408,13 @@ deploy/           # MindAgent + NapCat
 ## 11. 测试重点
 
 - OneBot 实时事件和历史结果到 `ChannelMessage` 的统一转换，以及统一输出到 OneBot 动作的转换；
-- 群触发、用户隔离、跨触发路由复用 Session 和同一用户顺序；
+- 私聊消息转换、用户隔离和同一用户消息顺序；
 - `query_channel_history` 的锚点定位、向更早记录分页、路由校验和 opaque cursor；
-- `recall_session_history` 的 Scroll 驱逐、展开、搜索和跨用户 Session 拒绝，并验证它不会读取 QQ 渠道记录；
-- 人设三文件原子写入和下一 run 生效；
+- `recall_session_history` 的 headline 提取、展示剥离、长度限制、回退、Scroll 驱逐、展开、搜索和跨用户 Session 拒绝，并验证 headline 不是事实来源；
+- `query_channel_history` 仅在本地历史缺失时作为补偿使用，结果不写入 Session 历史或 headline 索引；
+- 四文件固定顺序、完整正文注入、frontmatter 剥离和全局规则优先级；
+- PROFILE.md/MEMORY.md 的跨用户隔离、32 KiB 边界、UTF-8 校验、revision 冲突、原子替换和下一 run 生效；
+- 通用文件工具不得修改、删除或重命名 PROFILE.md/MEMORY.md，专用工具不得访问 AGENTS.md/SOUL.md；
 - TXT/Markdown 校验、格式感知切块、标题路径和原文行号定位；
 - OpenAI-compatible 与 Ollama 的连接测试、Embedding、索引和检索；
 - 同名拒绝、显式替换、文档重建、删除和 active generation 切换；
