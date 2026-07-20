@@ -35,10 +35,9 @@ MindAgent 是一个多用户智能体工作台。一个实例服务一个团队�
 - 概览；
 - 管理：用户、知识库、任务；
 - 智能体：人设文件、Skills、内置工具、MCP；
-- 设置：模型、QQ 状态；
-- 固定的测试聊天入口。
+- 设置：模型、QQ 状态。
 
-用户页面同时承载用户与其 Workspace 管理；全局人设、Skills、内置工具和 MCP 是独立的全局 Agent 能力。QQ 状态页保持只读。
+用户页面同时承载用户与其 Workspace 管理；全局人设、Skills、内置工具和 MCP 是独立的全局 Agent 能力。QQ 状态页保持只读，首版所有 Agent 交互只通过 QQ 私聊进行。
 
 ## 4. Agent 能力
 
@@ -72,7 +71,7 @@ Agent 只能通过专用工具更新当前用户的 PROFILE/MEMORY；不保存�
 
 管理员可以配置全局 MCP 客户端，首版支持 stdio 和 Streamable HTTP。每个客户端可以控制哪些工具暴露给 Agent，并为全部工具设置 `ask`、`allow` 或 `deny` 默认策略，也可以按工具覆盖该策略。系统不提供按用户、渠道或 Session 的详细规则。
 
-需要审批的调用由当前 QQ 用户在原私聊中确认；管理员测试聊天在 Web 中确认。单个 MCP 客户端故障不影响其他客户端或 Agent 的基础能力。
+需要审批的调用由当前 QQ 用户在原私聊中确认。单个 MCP 客户端故障不影响其他客户端或 Agent 的基础能力。
 
 ### Skills
 
@@ -88,6 +87,6 @@ MindAgent 使用默认 `~/.mindagent` 数据根目录。`app.db` 统一保存全
 
 ## 6. 首版范围与非目标
 
-首版实现 QQ 私聊、单用户 Session/Workspace 隔离、Scroll 召回、四文件人设与用户记忆、Sub-agent 任务、全局 RAG、全局 Skills、内置工具管理、MCP 管理和管理员 Web。
+首版实现 QQ 私聊、每用户唯一 Session/Workspace 隔离、Scroll 召回、四文件人设与用户记忆、Sub-agent 任务、全局 RAG、全局 Skills、内置工具管理、MCP 管理和管理员 Web。
 
 首版不实现群聊、第二渠道、插件系统、Skill 脚本执行、技能市场、MCP OAuth、MCP 详细访问规则、自动记忆整理、后台 dream、备份恢复、迁移中心或多服务拆分。

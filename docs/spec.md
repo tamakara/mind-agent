@@ -193,7 +193,8 @@ Skills 是管理员维护、所有 Agent 共享的全局能力，不属于任何
 - 每个 Skill MUST 位于 `<MINDAGENT_DATA_DIR>/skills/<skill_key>/`，目录 MUST 包含 `SKILL.md`，MAY 包含 `references/`、`scripts/` 和其他资源；
 - `skill_key` MUST 匹配 `[a-z0-9][a-z0-9_-]{0,63}` 并作为稳定运行时标识，不得从可变的 frontmatter 名称重新推导；
 - `SKILL.md` MUST 为不超过 128 KiB 的 UTF-8 文本，YAML frontmatter MUST 包含非空 `name` 和 `description`；
-- Skill 正文和资源文件 MUST 以目录内容为真相来源；`app.db` 只保存 Skill 的内部 UUID、`skill_key`、启停状态、revision 和更新时间；
+- Skill 正文和资源文件 MUST 以目录内容为真相来源；`app.db` 只保存 Skill 的内部 UUID、`skill_key`、启停状态、revision 和更新时间；revision MUST 为按相对路径排序后对“相对路径 + 文件内容”计算的整个 Skill 目录 SHA-256；
+- 编辑或覆盖 Skill MUST 携带 `expected_revision`；不匹配 MUST 返回 `SKILL_REVISION_CONFLICT`，不得覆盖较新版本；
 - 管理端 MUST 支持列表、搜索、创建、编辑 `SKILL.md`、ZIP 导入、资源树查看、启停和删除；同 key 冲突 MUST 默认拒绝，覆盖 MUST 由管理员显式确认；
 - ZIP 上传 MUST NOT 超过 5 MiB，解压后 MUST NOT 超过 20 MiB 或 256 个文件；绝对路径、`..`、符号链接、硬链接和越出临时根目录的条目 MUST 被拒绝；
 - 导入 MUST 先在临时目录完成全部验证，再以原子目录替换安装；失败时 MUST 保留旧版本且不得留下半安装目录；
@@ -209,15 +210,17 @@ MCP 客户端和工具策略是全局 Agent 配置，不按用户、Session 或�
 - 首版 MUST 只支持 `stdio` 和 `streamable_http` transport；MUST NOT 支持 SSE、OAuth、MCP Resources、MCP Prompts 或市场安装；
 - stdio 配置 MUST 包含非空 `command`，`args` MUST 为字符串数组；Streamable HTTP 配置 MUST 包含有效 HTTP(S) URL；
 - 管理端 MUST 支持结构化编辑和标准 `mcpServers` JSON 导入，并提供客户端 CRUD、启停、连通性测试、工具发现、工具白名单与策略管理；
-- MCP 客户端的内部 ID MUST 为 UUID4，`client_key` MUST 为稳定唯一键；API 和日志 MUST NOT 回显 env、headers 或其他原始凭据；
+- MCP 客户端的内部 ID MUST 为 UUID4，`client_key` MUST 匹配 `[a-z0-9][a-z0-9_-]{0,63}` 并作为稳定唯一键；API 和日志 MUST NOT 回显 env、headers 或其他原始凭据；
+- 创建和更新响应 MUST 只返回敏感字段的 `configured` 状态；更新时省略敏感字段 MUST 保留原值，显式 `null` MUST 清除原值，掩码字符串 MUST NOT 被保存为真实凭据；
 - 新客户端的 `default_effect` MUST 默认为 `ask`，允许值只为 `ask`、`allow`、`deny`；
 - 每个已发现工具 MAY 保存一个 `tool_effect`；缺少逐工具值时 MUST 继承客户端 `default_effect`，存在时 MUST 以逐工具值为准；
 - 修改客户端默认策略 MUST NOT 删除逐工具覆盖；管理端 MUST 提供清除全部逐工具覆盖的操作；新发现工具 MUST 自动继承客户端默认策略；
-- 工具白名单与访问策略 MUST 独立：未进入白名单的工具不得注册给模型，`deny` 工具 MAY 注册和展示但调用时不得连接执行端；
+- 工具白名单与访问策略 MUST 独立：`null` 白名单表示暴露全部已发现工具，空数组表示不暴露任何工具；未进入显式白名单的工具不得注册给模型，`deny` 工具 MAY 注册和展示但调用时不得连接执行端；
 - `allow` MUST 直接执行；`deny` MUST 返回 `MCP_TOOL_DENIED`；`ask` MUST 在执行前取得绑定当前调用的有效批准；
 - QQ 审批 MUST 绑定 `approval_id`、用户、Session、run、tool call、工具名和原始 `ChannelAddress`，只接受原私聊用户的一次性 `/approve <code>` 或 `/deny <code>`，并在 120 秒后过期；
-- Web 测试聊天 MUST 通过 SSE 发出结构化审批事件并由当前管理员决定；无法提供交互审批的上下文 MUST 返回 `MCP_APPROVAL_UNAVAILABLE`；
+- 没有当前 QQ 私聊审批上下文的 run MUST NOT 等待人工决定，并 MUST 返回 `MCP_APPROVAL_UNAVAILABLE`；
 - 审批命令 MUST 在触发普通 Agent run 前由 Channel Adapter 截获；跨用户、跨 Session、重复、过期或未知审批码 MUST 被拒绝；
+- 审批状态只允许 `pending`、`approved`、`denied`、`expired` 和 `cancelled`；状态离开 `pending` 后 MUST NOT 再改变；等待审批的 run MUST 继续持有当前用户 Session 锁，审批命令自身 MUST 绕过该锁并只完成审批决策；
 - MCP 工具 MUST 以 `mcp__<client_key>__<tool_name>` 暴露；规范化后的名称冲突 MUST 拒绝注册，不得静默覆盖；
 - 启用客户端的连接、工具发现和重载失败 MUST 只影响该客户端；其他 MCP 客户端、内置工具和 Agent 基础能力 MUST 继续可用；
 - 配置修改 MUST 原子替换该客户端的运行时快照，正在执行的 run MUST 继续使用其启动时快照；
@@ -296,12 +299,12 @@ review run MUST 返回：
 - 未配置 Embedding、索引不可用或 Provider 故障时 MUST 返回结构化错误，不得伪造检索结果；
 - 删除文档 MUST 移除其原始文件、chunk 元数据和所有向量 generation，删除完成后 MUST NOT 再被检索。
 
-## 12. Web / API / SSE
+## 12. Web / API
 
 Web 只允许管理员登录，页面范围以 `proposal.md` 为准。QQ 页面 MUST 为只读状态页，不得提供渠道参数修改。
 
 - 菜单 MUST 将“用户”作为用户及其 Workspace 的唯一管理入口，不得把全局 Skills、内置工具或 MCP 表述为用户 Workspace 数据；
-- 管理台 MUST 使用“概览；管理：用户/知识库/任务；智能体：人设文件/Skills/内置工具/MCP；设置：模型/QQ 状态”的信息架构，并提供固定测试聊天入口；
+- 管理台 MUST 使用“概览；管理：用户/知识库/任务；智能体：人设文件/Skills/内置工具/MCP；设置：模型/QQ 状态”的信息架构；
 - 菜单分区 MUST 为静态视觉与路由组织，首版 MUST NOT 为此引入插件化菜单注册系统；
 - 人设、Skills、内置工具和 MCP MUST 使用独立页面和独立 API 路由，不得合并为含混的通用配置页面。
 
@@ -326,7 +329,7 @@ REST 错误响应统一为：
 }
 ```
 
-测试聊天使用 SSE；每个事件 MUST 包含 `run_id`、递增 `sequence`、`timestamp` 和 `payload`。机器状态 MUST 使用结构化字段，不得藏在自然语言标记中。
+首版 MUST NOT 提供 Web 测试聊天、Web Agent run 或其他交互入口；所有 Agent 交互 MUST 由 QQ 私聊触发。
 
 ## 13. Configuration / Storage / Security
 

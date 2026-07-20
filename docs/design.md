@@ -41,7 +41,7 @@ flowchart TB
 
     subgraph Adapters[适配层 Adapters]
         CH[QQ Channel Adapter]
-        API[REST / SSE API]
+        API[REST API]
     end
 
     subgraph Core[应用核心]
@@ -115,7 +115,7 @@ observability 由 app/runtime 注入，不承载业务状态
 | 模块 | 核心职责 | 禁止依赖 |
 | --- | --- | --- |
 | `domain` | ID、消息、请求/响应、任务、错误等纯契约 | 任意 I/O 或实现模块 |
-| `api` | REST、SSE、认证、管理端协议 | SQL、OneBot、Workspace 内部文件 |
+| `api` | REST、认证、管理端协议 | SQL、OneBot、Workspace 内部文件 |
 | `channels` | 外部消息协议与领域消息互转 | history.db、任务内部状态、SQL |
 | `runtime` | 请求编排、Prompt/工具组装、Agent loop | OneBot 原始结构、直接 SQL |
 | `workspaces` | 用户、Session、Workspace、执行锁 | 渠道协议、模型 Provider |
@@ -232,7 +232,7 @@ Repository 只读取 `builtin_tool_settings` 覆盖并与 Registry 合并。列�
 
 ### 10.2 Skills
 
-SkillService 以 `<MINDAGENT_DATA_DIR>/skills/<skill_key>/` 为内容源，以 app.db 为启停和 revision 源。创建、编辑和 ZIP 导入统一经过 staged directory：校验 key、frontmatter、文件数量、解压大小和所有解析后路径，再原子替换目标目录。
+SkillService 以 `<MINDAGENT_DATA_DIR>/skills/<skill_key>/` 为内容源，以 app.db 为启停和 revision 源。revision 是对按相对路径排序后的整个目录内容计算的 SHA-256；保存和覆盖使用 `expected_revision` 做乐观并发控制。创建、编辑和 ZIP 导入统一经过 staged directory：校验 key、frontmatter、文件数量、解压大小和所有解析后路径，再原子替换目标目录。
 
 Runtime 向系统 Prompt 添加启用 Skill 的短目录，并注册不可配置的 `read_skill_resource`。该读取器只打开已解析在对应 Skill 根目录内的 UTF-8 文本；references 可按需读取，scripts 只供管理端查看/下载。Skill 目录从不挂载为用户 Workspace，也不传给命令执行工具。
 
@@ -248,11 +248,11 @@ MCPManager 是进程级异步组件，使用官方 MCP SDK 为启用客户端维
 
 模型侧名称使用 `mcp__<client_key>__<sanitized_tool_name>`；映射表保留服务端原始工具名用于真实调用。规范化名称冲突在注册阶段报错。
 
-工具暴露和授权分开求值：先用 `tool_allowlist` 决定是否注册，再按 `tool_effect ?? default_effect` 得到 `allow`、`ask` 或 `deny`。拒绝在连接执行端之前发生；详细的 source/subject 规则不进入领域模型。
+工具暴露和授权分开求值：先用 `tool_allowlist` 决定是否注册，`null` 表示全部已发现工具、空数组表示全部关闭；再按 `tool_effect ?? default_effect` 得到 `allow`、`ask` 或 `deny`。拒绝在连接执行端之前发生；详细的 source/subject 规则不进入领域模型。
 
 ### 10.4 Approval Service
 
-ApprovalService 创建一次性、120 秒有效的 pending approval，app.db 保存关联 ID、调用身份、状态和时间，不保存未脱敏凭据。QQ Adapter 在创建普通 AgentRequest 前识别 `/approve <code>` 与 `/deny <code>`，校验原用户、Session 和地址后唤醒等待中的 tool call。Web 测试聊天通过 SSE 发出 `approval_required`，并调用同一决策服务。
+ApprovalService 创建一次性、120 秒有效的 pending approval，状态只能从 `pending` 单向转为 `approved`、`denied`、`expired` 或 `cancelled`。app.db 保存关联 ID、调用身份、状态和时间，不保存未脱敏凭据。等待中的 run 继续持有当前用户 Session 锁；QQ Adapter 在创建普通 AgentRequest 和获取该锁之前识别 `/approve <code>` 与 `/deny <code>`，校验原用户、Session 和地址后只唤醒对应 tool call。
 
 服务重启后遗留 pending approval 统一过期；没有实时审批表面的后台 run 不等待，直接返回 `MCP_APPROVAL_UNAVAILABLE`。
 
@@ -336,13 +336,13 @@ tool_approvals(id PK, run_id, user_id, session_id, tool_call_id,
                tool_name, status, expires_at, decided_at)
 ```
 
-`connection_config`、`secret_config` 和 `tool_allowlist` 使用 JSON 存储传输专属字段；API 层按 transport 进行 Pydantic 判别校验。`effect` 只接受 `ask/allow/deny`，逐工具记录缺失即表示继承客户端默认策略。
+`connection_config`、`secret_config` 和 `tool_allowlist` 使用 JSON 存储传输专属字段；API 层按 transport 进行 Pydantic 判别校验。敏感字段省略表示保留、显式 `null` 表示清除，响应只返回 `configured`，不得把掩码写回数据库。`effect` 只接受 `ask/allow/deny`，逐工具记录缺失即表示继承客户端默认策略。
 
 首版凭据与普通配置一起明文保存到 app.db。必须限制 DB 文件权限，API 对 MCP env/headers 和模型密钥只返回掩码及 `configured` 状态，日志/错误脱敏，并提示备份包含凭据。所有 SQLite 连接启用 WAL、foreign keys 和 busy timeout。
 
 ## 14. Web / API
 
-`api` 模块只处理 HTTP/SSE 协议、认证、参数验证和 DTO 转换，通过应用服务访问业务能力，不直接执行 SQL。
+`api` 模块只处理 HTTP 协议、认证、参数验证和 DTO 转换，通过应用服务访问业务能力，不直接执行 SQL。管理台不发起 Agent run，首版所有 Agent 交互只由 QQ Channel Adapter 触发。
 
 管理台使用少量非折叠视觉分区，不引入动态菜单注册：
 
@@ -363,8 +363,6 @@ tool_approvals(id PK, run_id, user_id, session_id, tool_call_id,
 设置
 ├── 模型
 └── QQ 状态                # 只读
-
-测试聊天                   # 固定快捷入口
 ```
 
 分区只表达当前领域边界：Workspace 是用户隔离数据，不是 Agent 配置目录；Skills、内置工具和 MCP 是全局 Agent 能力。未来真正出现多 Agent、多渠道或大量设置项时，再演进为可折叠层级。
@@ -382,9 +380,8 @@ tool_approvals(id PK, run_id, user_id, session_id, tool_call_id,
 | Tasks | `/api/v1/tasks/*` |
 | Models | `/api/v1/model/*` |
 | QQ 状态 | `/api/v1/qq/status` |
-| 测试聊天 | `/api/v1/chat/stream` |
 
-QQ 页面只读。模型和 Embedding API key 写入 app.db，响应永远脱敏；空值表示保留原密钥。测试聊天使用带 run_id、递增 sequence、timestamp 和 payload 的 SSE。
+QQ 页面只读。模型和 Embedding API key 写入 app.db，响应永远脱敏；空值表示保留原密钥。
 
 Skills API 覆盖列表、创建、保存、ZIP 导入、资源树/文本读取、启停和删除。MCP API 覆盖客户端 CRUD/启停/测试，以及：
 
@@ -392,7 +389,6 @@ Skills API 覆盖列表、创建、保存、ZIP 导入、资源树/文本读取�
 GET/PUT /api/v1/mcp/{client_id}/tools
 GET/PUT /api/v1/mcp/{client_id}/policy
 POST     /api/v1/mcp/{client_id}/policy/clear-tool-effects
-POST     /api/v1/tool-approvals/{approval_id}/decision
 ```
 
 Policy DTO 只包含 `default_effect` 与 `tool_effects[{tool_name,effect}]`；工具列表 DTO 同时返回服务端发现状态、白名单启用状态、有效策略和是否显式覆盖。不得在 API 中出现 source/subject 详细规则字段。
@@ -411,7 +407,7 @@ Policy DTO 只包含 `default_effect` 与 `tool_effects[{tool_name,effect}]`；�
 src/mindagent/
 ├── app/             # 配置加载、依赖组装、启动与生命周期
 ├── domain/          # 纯领域类型、ID、错误和跨模块契约
-├── api/             # REST、SSE、认证和管理台接口
+├── api/             # REST、认证和管理台接口
 ├── channels/
 │   └── qq/          # NapCat / OneBot v11 私聊适配
 ├── runtime/         # Agent run 和运行时编排
@@ -422,7 +418,7 @@ src/mindagent/
 │   ├── tools/       # Tool Registry、启停覆盖和工具快照
 │   ├── skills/      # Skill 校验、导入和按需读取
 │   ├── mcp/         # MCP 客户端、工具发现和策略
-│   └── approvals/   # QQ/Web 一次性工具审批
+│   └── approvals/   # QQ 一次性工具审批
 ├── tasks/           # TaskManager、Sub-agent、review
 ├── knowledge/       # 文档、切块、索引和知识工具
 ├── providers/       # Chat/Embedding Provider
@@ -436,7 +432,7 @@ deploy/               # MindAgent + NapCat
 测试按模块边界组织：
 
 - unit：纯转换、路径校验、Scroll、Prompt、Skill/ZIP 校验、MCP 策略求值、切块和状态机；
-- contract：ChannelMessage、AgentRequest/Response、Tool Registry、MCP/Skill DTO、Provider、REST/SSE；
+- contract：ChannelMessage、AgentRequest/Response、Tool Registry、MCP/Skill DTO、Provider、REST；
 - integration：Workspace 隔离、数据库、OneBot、MCP 两种 transport、审批、模型、知识索引和任务恢复；
 - e2e：并发 QQ 私聊、管理台菜单、四文件生效、内置工具热更新、MCP 策略/审批、Skill 按需读取、Scroll recall 和长任务验收。
 
