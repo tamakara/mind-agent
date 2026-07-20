@@ -2,30 +2,32 @@
 
 > 状态：Accepted
 >
-> 本文描述首版实现架构、模块边界和依赖方向。业务范围见 [proposal.md](proposal.md)，强制契约见 [spec.md](spec.md)。
+> 本文描述首版实现架构、存储和数据流。业务范围见 [proposal.md](proposal.md)，不可违背的契约见 [spec.md](spec.md)。
 
-## 1. 设计原则与技术基线
+## 1. 技术基线与原则
 
-MindAgent 是单进程、单 Agent、多用户隔离的自托管应用。设计遵循：
+MindAgent 是单企业、单飞书应用、单 Agent、多员工隔离的自托管应用。首版遵循：
 
-- **入口与内核分离**：QQ 和 Web 只负责接入，Runtime 不读取 OneBot 原始结构；
-- **Workspace 是用户边界**：Session、历史、文件、资料和任务均按内部用户 UUID 隔离；
-- **契约先于实现**：跨模块只传递 `domain` 类型和结构化错误；
-- **真相来源明确**：app.db 保存全局配置/状态，history.db 保存原始会话，原始知识文件保存知识正文；
-- **依赖单向**：入口依赖 Runtime，能力模块依赖 Storage，基础设施不反向依赖业务层；
-- **首版克制**：不引入微服务、独立 Worker、插件系统、Skill 脚本执行、沙箱或第二渠道。
+- **可信身份先于推理**：只有已绑定、启用的员工可以进入 Runtime；
+- **入口与内核分离**：飞书 SDK 事件先转换为领域消息；
+- **主体不可由模型选择**：所有企业工具使用服务端 `ActorContext`；
+- **原文与索引分离**：知识文件是真相，chunk 和向量可重建；
+- **确认与业务审批分离**：MindAgent 只取得申请人确认，OA 拥有审批状态；
+- **持久动作代替等待 run**：确认期间不占用模型、锁或连接；
+- **单库不等于无边界**：`app.db` 内按 repository 和外键划分所有权，Mock OA 使用独立数据库；
+- **首版克制**：只实现文本私聊、年假链路和最小管理端。
 
 | 领域 | 技术选型 |
 | --- | --- |
 | Python | Python 3.12、FastAPI、Uvicorn、Pydantic v2 |
 | 包管理 | `uv`、`pyproject.toml`、`uv.lock` |
 | Agent | LangGraph、`langchain-openai` |
-| 扩展能力 | 官方 `mcp` Python SDK、PyYAML、标准库 zipfile |
-| 数据 | SQLite WAL、aiosqlite、本地文件、Chroma |
-| RAG | `langchain-text-splitters`、`langchain-chroma`、`langchain-openai`、`langchain-ollama` |
-| QQ | NapCat、OneBot v11、WebSocket |
+| 飞书 | 飞书官方 Python SDK、长连接 |
+| MCP | 官方 Python SDK、Streamable HTTP |
+| 数据 | SQLite WAL、aiosqlite、本地原子文件 |
+| RAG | `langchain-text-splitters`、Chroma、OpenAI-compatible Embedding |
 | Web | React 18、TypeScript、Vite、Ant Design |
-| 观测 | 结构化日志、可选 Langfuse |
+| 观测 | 结构化日志、审计表、可选 Langfuse |
 | 测试 | pytest、pytest-asyncio、Vitest、Playwright |
 
 统一命名：产品 `MindAgent`，仓库 `mind-agent`，Python 包/CLI `mindagent`，环境变量前缀 `MINDAGENT_`，默认数据目录 `~/.mindagent`。
@@ -34,406 +36,340 @@ MindAgent 是单进程、单 Agent、多用户隔离的自托管应用。设计�
 
 ```mermaid
 flowchart TB
-    subgraph Surfaces[入口 Surfaces]
-        QQ[QQ 私聊]
-        WEB[管理员 Web]
-    end
+    FS[飞书私聊与确认卡片]
+    WEB[管理员 Web]
 
-    subgraph Adapters[适配层 Adapters]
-        CH[QQ Channel Adapter]
+    subgraph MA[MindAgent 单 Worker]
+        FC[Feishu Adapter]
         API[REST API]
-    end
-
-    subgraph Core[应用核心]
+        ID[Employee / Identity]
         RT[Agent Runtime]
-        WS[User / Session / Workspace]
         CTX[Context / Scroll]
-        PER[Persona / Memory]
-        CAP[Capabilities / Skills / MCP]
-        TASK[Tasks / Sub-agent]
         KB[Knowledge / RAG]
+        MCP[MCP Manager]
+        PA[Pending Action Service]
+        AUD[Audit]
+        DB[(app.db)]
+        FILES[(knowledge originals/index)]
     end
 
-    subgraph Infra[共享基础设施]
-        PRV[Model Providers]
-        STO[Storage]
-        OBS[Observability]
+    subgraph OA[Mock OA Service]
+        OMCP[Streamable HTTP MCP]
+        OAPI[Demo Admin REST]
+        ODB[(mock_oa.db)]
     end
 
-    QQ <--> CH
+    FS <--> FC
     WEB <--> API
-    CH --> RT
-    API --> RT
-    RT --> WS
+    FC --> ID
+    FC --> RT
+    FC --> PA
     RT --> CTX
-    RT --> PER
-    RT --> CAP
-    RT --> TASK
     RT --> KB
-    RT --> PRV
-    WS --> STO
-    CTX --> STO
-    PER --> STO
-    CAP --> STO
-    TASK --> STO
-    KB --> STO
-    RT --> OBS
+    RT --> MCP
+    PA --> MCP
+    MCP <--> OMCP
+    OAPI --> ODB
+    OMCP --> ODB
+    ID --> DB
+    CTX --> DB
+    PA --> DB
+    KB --> DB
+    KB --> FILES
+    MCP --> DB
+    AUD --> DB
 ```
 
-入口是人或管理员接触系统的表面；Adapter 把外部协议转换为领域契约；Runtime 编排一次 Agent run；Workspace 和各能力模块提供隔离资源；Provider、Storage、Observability 是共享基础设施。
+飞书和 Web 是表面，Adapter/API 只处理外部协议；Runtime 编排自由文本 Agent run；Pending Action Service 编排确定性的确认回调；Mock OA 独立拥有业务余额和申请。
 
-## 3. 入口与请求生命周期
-
-首版入口只有 QQ 私聊和管理员 Web。一次 QQ 请求生命周期：
-
-1. QQ Channel Adapter 接收 OneBot 事件、去重并转换为 `ChannelMessage`；
-2. Workspace 服务根据 `(channel, account_id, platform_user_id)` 解析内部用户；
-3. 首次触发时原子创建用户、唯一 Session 和 Workspace；
-4. Runtime 获取该用户 Session 执行锁并构造 `AgentRequest`；
-5. Runtime 组装四文件 Prompt、Scroll 窗口和当前地址，并取得内置工具、MCP 工具/策略与 Skill 目录的不可变快照；
-6. LangGraph 执行主 Agent，并逐字持久化消息和工具事件；
-7. 短任务直接生成 `AgentResponse`，长任务提交 Task 服务；
-8. QQ Adapter 把 `AgentResponse` 转为 OneBot 动作并投递。
-
-同一用户的 run 串行，不同用户并发。`ChannelAddress` 只用于外部历史范围和回复投递，不参与 Session/Workspace 选择。
-
-## 4. 模块边界与依赖方向
+## 3. 模块与依赖
 
 ```text
 api / channels
         ↓
-runtime
+runtime / confirmations
         ↓
-workspaces / context / persona / capabilities / tasks / knowledge / providers
+employees / context / knowledge / mcp / providers / audit
         ↓
 storage
-
-domain 被各层复用，但不依赖实现模块
-observability 由 app/runtime 注入，不承载业务状态
 ```
 
-| 模块 | 核心职责 | 禁止依赖 |
+| 模块 | 核心职责 | 禁止事项 |
 | --- | --- | --- |
-| `domain` | ID、消息、请求/响应、任务、错误等纯契约 | 任意 I/O 或实现模块 |
-| `api` | REST、认证、管理端协议 | SQL、OneBot、Workspace 内部文件 |
-| `channels` | 外部消息协议与领域消息互转 | history.db、任务内部状态、SQL |
-| `runtime` | 请求编排、Prompt/工具组装、Agent loop | OneBot 原始结构、直接 SQL |
-| `workspaces` | 用户、Session、Workspace、执行锁 | 渠道协议、模型 Provider |
-| `context` | history.db、turn、headline、Scroll、recall | QQ 外部历史、知识库 |
-| `persona` | 四文件加载、Prompt 片段、用户资料工具 | Session 原始历史、渠道协议 |
-| `capabilities` | Tool Registry、Skills、MCP 客户端、策略和审批 | 用户 Workspace 内容、渠道原始协议 |
-| `tasks` | 队列、Sub-agent、review、返工 | OneBot 协议、Web 控件 |
-| `knowledge` | 文档、切块、索引 generation、只读工具 | 用户 Session、QQ 历史 |
-| `providers` | Chat/Embedding Provider 接口 | Workspace 和业务状态 |
-| `storage` | SQLite repository、原子文件、安全路径 | API、Channel、Runtime |
-| `observability` | 日志、trace、健康状态 | 业务状态所有权 |
+| `domain` | ID、消息、员工、动作、工具、错误契约 | I/O 和框架依赖 |
+| `channels/feishu` | 长连接、事件去重、消息/卡片转换和投递 | 直接 SQL、模型推理 |
+| `api` | 管理认证、验证和 DTO 转换 | 直接执行工具或业务审批 |
+| `employees` | 员工、identity、绑定和 ActorContext | 信任模型提供的主体 |
+| `runtime` | Prompt、Scroll、工具快照和 Agent loop | 飞书原始结构、直接 SQL |
+| `context` | Session、turn、headline、Scroll、recall | 外部聊天历史和知识内容 |
+| `knowledge` | 目录、原文、版本、切片、generation | 员工会话和 OA 数据 |
+| `mcp` | 客户端、发现、白名单、策略和调用包装 | 保存 OA 业务真相 |
+| `confirmations` | PendingAction、卡片、原子抢占和恢复 | 自由形式模型推理 |
+| `providers` | Chat/Embedding 接口与配置 | 员工和渠道状态 |
+| `audit` | 脱敏审计事件 | 保存密钥、token 或完整敏感参数 |
+| `storage` | SQLite repository、迁移和原子文件 | API 或渠道协议 |
 
-## 5. QQ Channel Adapter
+## 4. 飞书接入与身份生命周期
 
-`channels/qq/` 封装 NapCat / OneBot v11：
+`FeishuGateway` 使用官方 SDK 建立长连接，订阅私聊消息和交互卡片事件。它负责有限重连、健康状态和关闭；事件处理不得阻塞 SDK 接收线程，需投递到应用异步循环。
 
-- 反向 WebSocket 连接、事件去重、心跳和动作 `echo` 关联；
-- OneBot 消息段与 `ChannelMessage`/`MessageContent` 的双向转换；
-- QQ 文件注册和稳定 `file_ref`；
-- 当前私聊原始历史查询；
-- 只读连接健康状态。
+消息流程：
 
-实时事件和历史结果共用一个 Message Converter。接收循环只做转换和排队，不等待文件下载、历史分页或 Agent run。
+```mermaid
+sequenceDiagram
+    participant U as 飞书员工
+    participant F as Feishu Adapter
+    participant I as Identity Service
+    participant R as Runtime
+    participant S as Scroll
 
-`query_channel_history` 是本地历史缺口的补偿工具。Gateway 使用 `get_msg` 验证锚点，再调用 `get_friend_msg_history`；返回页只存在于当前 run，不写入 history.db、Workspace 或 headline 索引。
-
-未来新增渠道只实现 `channels/<channel>/` Adapter 和转换测试，不修改 Runtime、Context 或用户隔离逻辑。
-
-## 6. Agent Runtime
-
-Runtime 是一次 Agent run 的应用编排层：
-
-- 接收 `AgentRequest`，解析用户运行上下文；
-- 调用 Workspace 获取 Session 锁和目录句柄；
-- 调用 Persona 构建系统 Prompt；
-- 调用 Context 构建 live window 和 recall 工具；
-- 从 Capabilities 取得内置工具、MCP 工具/策略和 Skill 目录快照；
-- 注册 Persona、Knowledge、Task 等启用的内置工具以及启用的 MCP 工具；
-- 通过 Provider 调用模型并驱动 LangGraph；
-- 生成 `AgentResponse`，不直接执行渠道投递。
-
-主 Agent 负责即时回复、短任务和长任务分派。Runtime 不持有持久化真相，不直接读取数据库或平台原始消息。配置热更新只替换后续 run 使用的能力快照，已开始的 run 不被中途改写。
-
-## 7. User / Session / Workspace
-
-Workspace 是 MindAgent 的用户隔离边界，不是 Agent 配置目录。每名内部用户拥有：
-
-- 一个 UUID4 用户 ID；
-- 一个稳定绑定的唯一 Session；
-- 一个以内部用户 UUID 命名的 Workspace；
-- 一个 Session 执行锁。
-
-Workspace 服务负责渠道身份去重、用户/Session/Workspace 原子创建、目录初始化、安全路径解析、文件/产物注册和跨用户拒绝。QQ 平台用户 ID 只保存在 channel identity 中，不用于目录名。
-
-不创建 per-user `agent.json` 或其他 Workspace 配置文件；用户差异只通过 PROFILE.md、MEMORY.md、历史、文件和任务体现。
-
-## 8. Context / Scroll
-
-每个 Workspace 的 `history.db` 是 Session 原始历史真相来源。`session_history` 至少保存 `seq`、`turn_id`、触发地址、角色、正文、tool_call_id、headline 和时间。
-
-一个 turn 从真实用户消息开始，覆盖工具调用/结果和最终回复。最终回复携带隐藏 headline，渲染给用户时移除；缺失时使用用户消息首行截断回退。
-
-上下文构建：
-
-1. 写入新事件；
-2. 加载最近完整 turn；
-3. 超过 token 预算时驱逐最旧完成 turn；
-4. 保留 `[context compressed]` 索引；
-5. 最近 20 个被驱逐 turn 逐条显示 headline，更早 turn 折叠为首尾 headline 的 seq 区间。
-
-`recall_session_history(expand)` 按 seq 返回分组原文；`search` 同时检索 headline 和 content。headline 仅用于导航，回答事实前必须读取原文。Context 不调用 QQ 历史，也不跨用户读取。
-
-## 9. Persona / Profile / Memory
-
-Persona 模块读取：
-
-1. `<MINDAGENT_DATA_DIR>/persona/AGENTS.md`；
-2. `<MINDAGENT_DATA_DIR>/persona/SOUL.md`；
-3. 当前 Workspace 的 `PROFILE.md`；
-4. 当前 Workspace 的 `MEMORY.md`。
-
-Prompt Builder 剥离可选 YAML frontmatter，以文件标题分隔后完整拼接正文，并声明全局 AGENTS/SOUL 优先于用户文件。每次 run 重新读取，不缓存内容。
-
-PROFILE/MEMORY 是 Workspace 特殊文件。通用文件工具可读但不可修改、删除或重命名；专用工具从当前 Session 推导 Workspace：
-
-```text
-read_user_context_file(file) -> {content, revision, size_bytes}
-replace_user_context_file(file, content, expected_revision)
-    -> {revision, size_bytes, effective_from: "next_run"}
+    U->>F: 私聊文本事件
+    F->>F: event_id 去重并转换领域消息
+    F->>I: resolve(app_id, open_id)
+    alt 未绑定
+        I-->>F: unbound identity
+        F-->>U: 请联系管理员绑定员工身份
+    else 已绑定且启用
+        I-->>F: ActorContext + Session
+        F->>R: AgentRequest
+        R->>S: 持久化完整回合
+        R-->>F: 文本或确认卡片
+        F-->>U: 投递回复
+    end
 ```
 
-revision 为原文件 SHA-256。新文件必须是 UTF-8 且不超过 32 KiB；写入采用同目录临时文件、flush 和原子替换。首版不实现自动记忆、dream 或 memory_search。
+未知 identity 的创建使用 upsert，重复事件或并发首次消息不得产生多条记录。管理员先创建员工，再从待绑定列表选择 identity 完成绑定。解绑不删除历史，不允许把旧历史迁移给另一员工。
 
-## 10. Global Agent Capabilities
+首版只解析飞书文本消息。非文本和群聊事件记录最小诊断信息后返回不支持提示；不得下载附件。`ChannelAddress` 只用于回复路由，不参与员工或 Session 选择。
 
-Capabilities 是全局 Agent 能力层，与用户 Workspace 隔离层并列。它由 Tool Registry、SkillService、MCPManager 和 ApprovalService 组成；管理员配置对所有用户生效，但每次调用仍携带当前 `AgentRequest` 的用户、Session 和地址上下文。
+## 5. Runtime 与可信工具调用
 
-### 10.1 内置工具
+一次 Agent run：
 
-Tool Registry 在代码中注册工具描述符和处理函数：
+1. Adapter 取得当前员工执行锁并构造 `AgentRequest`；
+2. Runtime 从代码加载系统规则，注入 ActorContext 的展示字段；
+3. Context 构造最近完整回合和 headline 导航；
+4. Knowledge 与 MCP 提供不可变工具快照；
+5. LangGraph 执行模型和允许直接运行的工具；
+6. `confirm` 工具不连接 MCP，而是创建 PendingAction 并生成确认卡片；
+7. Context 原子完成回合并释放员工锁；
+8. Adapter 投递回复，投递结果写入审计。
+
+模型侧工具和执行侧工具分开建模：
 
 ```text
-ToolDescriptor(
-    name,
-    description,
-    category,
-    default_enabled,
-    configurable,
-    handler
-)
+Discovered MCP schema
+        ↓ remove subject fields / validate
+Model ToolDescriptor
+        ↓ model arguments
+Invocation Wrapper + ActorContext
+        ↓ inject trusted subject and idempotency
+Actual MCP call
 ```
 
-Repository 只读取 `builtin_tool_settings` 覆盖并与 Registry 合并。列表、单个启停和批量启停都写入同一张覆盖表；`configurable=false` 的 Runtime 基础能力不出现在管理开关中。Snapshot Builder 在 run 开始时解析一次有效工具集，后续不再查询配置。
+包装器删除或覆盖模型参数中的 `employee_id`、`employee_no`、`open_id` 等字段，并从模型 Schema 隐藏 `idempotency_key`。Mock OA 的传输约定包含可信主体元数据；执行 PendingAction 时包装器再注入服务端生成的幂等键。对不支持该约定的 MCP 客户端，主体相关工具不得启用。
 
-### 10.2 Skills
+系统 Prompt 固定包含：只服务当前员工、事实必须来自工具或当前上下文、制度回答引用来源、日期歧义必须追问、业务写入必须确认、不得声称完成未成功的调用。首版不提供可编辑 Persona 页面。
 
-SkillService 以 `<MINDAGENT_DATA_DIR>/skills/<skill_key>/` 为内容源，以 app.db 为启停和 revision 源。revision 是对按相对路径排序后的整个目录内容计算的 SHA-256；保存和覆盖使用 `expected_revision` 做乐观并发控制。创建、编辑和 ZIP 导入统一经过 staged directory：校验 key、frontmatter、文件数量、解压大小和所有解析后路径，再原子替换目标目录。
+## 6. Context / Scroll 设计
 
-Runtime 向系统 Prompt 添加启用 Skill 的短目录，并注册不可配置的 `read_skill_resource`。该读取器只打开已解析在对应 Skill 根目录内的 UTF-8 文本；references 可按需读取，scripts 只供管理端查看/下载。Skill 目录从不挂载为用户 Workspace，也不传给命令执行工具。
+不再为用户创建目录或独立数据库。`app.db` 中的核心表：
 
-### 10.3 MCP Manager
+```text
+agent_sessions(id, employee_id UNIQUE, next_seq, created_at, updated_at)
+session_turns(id, session_id, employee_id, kind, seq_lo, seq_hi,
+              headline, status, created_at, completed_at)
+session_events(id, turn_id, session_id, employee_id, seq, event_type,
+               text, tool_call_id, payload_json, created_at)
+```
 
-MCPManager 是进程级异步组件，使用官方 MCP SDK 为启用客户端维护状态化连接：
+所有 repository 方法从 `ActorContext` 接收 employee/session，SQL 同时包含两者；不得提供只按任意 session ID 读取的 Agent 接口。`payload_json` 只保存脱敏结构化数据。
 
-- 启动时并发连接已启用客户端，单客户端超时或失败只更新其状态；
-- 创建、编辑、启停或删除后，只关闭并重建对应客户端；
-- 工具发现结果转换为统一 ToolDescriptor，并缓存名称、说明和输入 Schema；
-- Runtime 取得连接句柄、白名单和策略的原子快照；调用完成前客户端旧快照保持可用，之后再清理；
-- stdio 子进程随客户端关闭，应用退出时在有限超时内关闭全部连接。
+`ScrollBuilder` 按完整 turn 计算 token：优先保留当前 turn，再从新到旧装入已完成 turn。被驱逐内容用压缩索引替换：最近 20 个旧 turn 显示 seq 范围与 headline，更早内容合并范围。headline 可由主响应结构化输出，失败时使用用户文本首行截断。
 
-模型侧名称使用 `mcp__<client_key>__<sanitized_tool_name>`；映射表保留服务端原始工具名用于真实调用。规范化名称冲突在注册阶段报错。
+`RecallService` 使用 `(employee_id, session_id, seq)` 复合索引读取原文；搜索优先 FTS5，不可用时降级为参数化 LIKE。确认回合的 `kind=confirmation`，与创建动作的普通回合通过 `pending_action_id` 关联，但不修改已经完成的旧回合。
 
-工具暴露和授权分开求值：先用 `tool_allowlist` 决定是否注册，`null` 表示全部已发现工具、空数组表示全部关闭；再按 `tool_effect ?? default_effect` 得到 `allow`、`ask` 或 `deny`。拒绝在连接执行端之前发生；详细的 source/subject 规则不进入领域模型。
+## 7. Pending Action 设计
 
-### 10.4 Approval Service
+### 7.1 创建
 
-ApprovalService 创建一次性、120 秒有效的 pending approval，状态只能从 `pending` 单向转为 `approved`、`denied`、`expired` 或 `cancelled`。app.db 保存关联 ID、调用身份、状态和时间，不保存未脱敏凭据。等待中的 run 继续持有当前用户 Session 锁；QQ Adapter 在创建普通 AgentRequest 和获取该锁之前识别 `/approve <code>` 与 `/deny <code>`，校验原用户、Session 和地址后只唤醒对应 tool call。
+当 Agent 选择 `confirm` 工具时，Runtime：
 
-服务重启后遗留 pending approval 统一过期；没有实时审批表面的后台 run 不等待，直接返回 `MCP_APPROVAL_UNAVAILABLE`。
+1. 用工具 Schema 规范化并验证模型参数；
+2. 根据 ActorContext 和工具参数生成确定性摘要；
+3. 生成 action ID、随机 token、参数哈希和幂等键；
+4. 在同一事务中写入 `pending_actions` 和 Scroll 创建事件；
+5. 只把原始 token 放入飞书卡片，数据库保存 token 哈希；
+6. 完成当前回合，不调用 MCP；如果卡片投递失败，则把动作转为 cancelled 并记录失败。
 
-## 11. Tasks / Sub-agent / Review
+`pending_actions` 建议字段：
 
-Task 服务使用进程内队列和 Semaphore，每用户默认并发 1、全局 4。任务状态保存到 app.db，任务工作文件保存到用户 Workspace。
+```text
+id, token_hash, employee_id, session_id, channel_identity_id,
+conversation_id, mcp_client_key, tool_name, canonical_args_json,
+args_hash, confirmation_summary_json, idempotency_key UNIQUE,
+status, result_summary_json, error_code, expires_at,
+created_at, started_at, completed_at
+```
+
+### 7.2 确认与取消
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued
-    queued --> running
-    running --> reviewing
-    reviewing --> succeeded: 验收通过
-    reviewing --> running: 首次返工
-    reviewing --> failed: 二次失败
-    queued --> cancelled
-    running --> cancelled
-    running --> interrupted: 服务重启
-    reviewing --> interrupted: 服务重启
+    [*] --> pending
+    pending --> executing: 有效确认且原子抢占
+    pending --> cancelled: 有效取消
+    pending --> expired: 超时
+    executing --> succeeded: MCP 成功
+    executing --> failed: 确定性失败
 ```
 
-Sub-agent 使用独立 run 和任务上下文，只提交候选结果。主 Agent 使用独立 review run 验收，最多自动返工一次。Task 模块保存原始要求、验收条件和原始 `ChannelAddress`，最终通知由 Channel Adapter 投递。
+回调先验证飞书身份、会话地址、token 哈希、有效期和动作状态。确认使用条件更新 `WHERE status='pending'` 抢占；取消同理。未抢占者读取已有状态并幂等更新卡片。
 
-## 12. Knowledge / RAG
+执行路径不启动 LLM：创建 confirmation turn，重新发现工具并检查策略，调用 MCP，保存结果，完成 turn，更新原卡片并发送文本结果。执行失败为终态；员工需要重新发起才能生成新动作。
 
-Knowledge 是所有 Agent 共享、Agent 只读的全局能力：
+服务启动时扫描：过期 pending 转 expired；未过期 pending 保持有效；executing 使用幂等键向 Mock OA 重试同一提交，得到已有申请后完成 succeeded，无法确定时保持失败并记录人工诊断，不生成第二张申请。
 
-- 支持 UTF-8 `.txt` 和 `.md`，单文件不超过 10 MiB；
-- `.txt` 递归字符切块，`.md` 先按标题层级再递归切块；
-- chunk 保存文档 ID、generation、文件名、标题路径和原文行号；
-- OpenAI-compatible 或 Ollama 提供 Embedding；
-- 原始文件是真相来源，knowledge.db/Chroma 是可重建派生数据；
-- active/pending generation 保证重建或迁移失败时旧索引继续服务。
+## 8. MCP Manager
 
-`search_knowledge` 显式向量检索，`list_knowledge_documents` 列出文档，`read_knowledge_document` 按行读取原文。Knowledge 不读取 Session Scroll、用户资料或 QQ 消息。
+MCPManager 是进程级异步组件，只维护 Streamable HTTP 客户端：
 
-## 13. Configuration / Storage
+- 启动时并发连接启用客户端，单客户端失败隔离；
+- 配置变更只关闭和重建目标客户端；
+- 工具发现缓存原始名称、说明和输入 Schema；
+- 模型工具名使用 `mcp__<client_key>__<sanitized_tool_name>`，名称冲突拒绝注册；
+- `tool_allowlist` 决定暴露，`tool_effect` 决定 `allow/confirm/deny`；
+- 新客户端和新工具默认 `deny`；
+- 运行快照持有连接句柄、Schema 和策略版本，完成后释放。
 
-`app.db` 是全局状态和运行配置的真相来源，不新增 config.toml、per-user agent.json 或 Workspace 配置文件。环境变量只提供数据目录、监听地址和首次缺失配置的引导值，不覆盖已有 DB 配置。
+Mock OA 客户端默认配置三项工具。真实密钥和 headers 加密不在首版，但必须限制 `app.db` 权限、API 脱敏并禁止日志输出。
+
+## 9. Knowledge 目录与索引
+
+### 9.1 存储模型
 
 ```text
-<MINDAGENT_DATA_DIR>/                 # 默认 ~/.mindagent
-├── app.db                            # 状态、配置和凭据
-├── persona/
-│   ├── AGENTS.md
-│   └── SOUL.md
-├── skills/
-│   └── <skill-key>/
-│       ├── SKILL.md
-│       ├── references/
-│       └── scripts/                  # 首版只读，不执行
-├── knowledge/
-│   ├── knowledge.db
-│   ├── originals/
-│   ├── staging/
-│   └── chroma/
-├── workspaces/
-│   └── <internal-user-uuid>/
-│       ├── PROFILE.md
-│       ├── MEMORY.md
-│       ├── history.db
-│       ├── files/
-│       ├── artifacts/
-│       └── tasks/
-└── cache/
+<MINDAGENT_DATA_DIR>/knowledge/
+├── originals/
+│   ├── policies/
+│   │   └── leave/
+│   │       └── 年假管理制度.md
+│   └── guides/
+├── staging/
+└── index/
 ```
 
-app.db 至少包含 `admin_sessions`、`users`、`channel_identities`、`agent_sessions`、`workspaces`、`tasks`、`builtin_tool_settings`、`mcp_clients`、`mcp_tool_settings`、`skills`、`tool_approvals`、应用设置、Chat/Embedding 模型配置和 QQ 连接配置。
+`knowledge_nodes` 表表达树：稳定 UUID、parent ID、类型、名称和相对路径。文档另有 `knowledge_document_versions`、`knowledge_index_jobs`、`knowledge_generations` 和 chunk 元数据。目录移动在事务内更新整棵子树的相对路径；文件系统操作使用 staging 与原子 rename，数据库和文件失败时执行明确补偿并标记 reconciliation_required。
 
-能力相关表保持窄模型：
+管理端/API 是唯一受支持写入口。应用启动的 Reconciler 比较节点、原文哈希、active generation 和索引目录：缺文件、孤儿文件、哈希不一致或索引缺失均进入结构化异常状态和修复队列。
+
+### 9.2 保存与索引流程
+
+```mermaid
+sequenceDiagram
+    participant W as Admin Web
+    participant K as Knowledge Service
+    participant F as Originals
+    participant Q as Index Queue
+    participant E as Embedding
+    participant V as Vector Index
+
+    W->>K: 保存文档(expected_revision)
+    K->>K: 校验路径/UTF-8/大小并计算 SHA-256
+    alt 内容未变化
+        K-->>W: revision unchanged
+    else 内容变化
+        K->>F: 原子替换原文
+        K->>Q: 创建 queued version/job
+        K-->>W: indexing
+        Q->>E: 标题感知切片并 Embedding
+        E->>V: 写 pending generation
+        alt 全部成功
+            Q->>K: 原子切换 active generation
+        else 失败
+            Q->>K: 保存错误，旧 active 继续服务
+        end
+    end
+```
+
+单并发消费者运行于 MindAgent 进程生命周期内，但不暴露为通用任务系统。移动/重命名在内容哈希不变时只更新数据库和 chunk 展示路径。删除清理原文、元数据和各 generation。
+
+Agent 的搜索结果只返回有限片段和定位；需要完整依据时调用按行读取。回答制度问题时 Prompt 要求引用“文档路径 + 版本 + 行号”。
+
+## 10. Mock OA 服务
+
+Mock OA 是仓库内独立 Python 包/服务和独立容器，不导入 MindAgent 应用模块，只共享版本化 MCP 契约和测试 fixtures。
 
 ```text
-builtin_tool_settings(tool_name PK, enabled, updated_at)
-mcp_clients(id PK, client_key UNIQUE, name, description, enabled,
-            transport, connection_config, secret_config,
-            tool_allowlist, default_effect, updated_at)
-mcp_tool_settings(client_id FK, tool_name, effect, discovered_at,
-                  PK(client_id, tool_name))
-skills(id PK, skill_key UNIQUE, enabled, revision, updated_at)
-tool_approvals(id PK, run_id, user_id, session_id, tool_call_id,
-               tool_name, status, expires_at, decided_at)
+Mock OA
+├── Streamable HTTP MCP
+│   ├── query_leave_balance
+│   ├── submit_leave_request
+│   └── query_leave_request_status
+├── Demo Admin REST
+│   └── PATCH /api/v1/leave-requests/{request_id}/status
+└── mock_oa.db
 ```
 
-`connection_config`、`secret_config` 和 `tool_allowlist` 使用 JSON 存储传输专属字段；API 层按 transport 进行 Pydantic 判别校验。敏感字段省略表示保留、显式 `null` 表示清除，响应只返回 `configured`，不得把掩码写回数据库。`effect` 只接受 `ask/allow/deny`，逐工具记录缺失即表示继承客户端默认策略。
+余额和申请事务在 Mock OA 内完成。`submit_leave_request` 先按 `(employee_id, idempotency_key)` 查询，再校验并创建；重试返回原记录。申请创建为 `pending_approval`。Demo Admin REST 只接受 `approved/rejected`，使用独立管理 token，不注册到 MCP，也不出现在 Agent Prompt。
 
-首版凭据与普通配置一起明文保存到 app.db。必须限制 DB 文件权限，API 对 MCP env/headers 和模型密钥只返回掩码及 `configured` 状态，日志/错误脱敏，并提示备份包含凭据。所有 SQLite 连接启用 WAL、foreign keys 和 busy timeout。
+## 11. 管理端与 API
 
-## 14. Web / API
-
-`api` 模块只处理 HTTP 协议、认证、参数验证和 DTO 转换，通过应用服务访问业务能力，不直接执行 SQL。管理台不发起 Agent run，首版所有 Agent 交互只由 QQ Channel Adapter 触发。
-
-管理台使用少量非折叠视觉分区，不引入动态菜单注册：
+管理端保持工作型、紧凑的信息架构：
 
 ```text
 概览
-
-管理
-├── 用户                   # 用户详情内管理 Workspace
-├── 知识库
-└── 任务
-
-智能体
-├── 人设文件               # 全局 AGENTS.md / SOUL.md
-├── Skills
-├── 内置工具
-└── MCP
-
+员工                 # 员工详情内绑定待认领飞书身份
+知识库               # 左侧目录树，右侧编辑器和索引状态
+MCP                  # 客户端、发现工具、白名单和策略
+审计                 # 按员工、事件、工具、动作和结果筛选
 设置
 ├── 模型
-└── QQ 状态                # 只读
+└── 飞书状态          # 只读连接状态与待绑定身份入口
 ```
 
-分区只表达当前领域边界：Workspace 是用户隔离数据，不是 Agent 配置目录；Skills、内置工具和 MCP 是全局 Agent 能力。未来真正出现多 Agent、多渠道或大量设置项时，再演进为可折叠层级。
+员工页不展示任意用户文件；知识页保存使用 revision 防止覆盖；MCP 页默认把新工具显示为 deny；审计页展示脱敏摘要。所有写 API 经过管理员 Session、CSRF/同源检查、参数验证和 repository，不直接执行 SQL。
 
-| 页面 | API |
-| --- | --- |
-| 登录与概览 | `/api/v1/auth/*`、`/healthz`、`/readyz` |
-| 用户及其 Workspace | `/api/v1/users/*`、`/api/v1/workspaces/*` |
-| 人设文件 | `GET/PUT /api/v1/persona/{file}` |
-| 用户 Profile/Memory | `GET/PUT /api/v1/workspaces/{user_id}/context/{file}` |
-| Skills | `/api/v1/skills/*` |
-| 内置工具 | `/api/v1/tools/*` |
-| MCP | `/api/v1/mcp/*` |
-| Knowledge | `/api/v1/knowledge/*` |
-| Tasks | `/api/v1/tasks/*` |
-| Models | `/api/v1/model/*` |
-| QQ 状态 | `/api/v1/qq/status` |
+## 12. 配置、数据库与部署
 
-QQ 页面只读。模型和 Embedding API key 写入 app.db，响应永远脱敏；空值表示保留原密钥。
-
-Skills API 覆盖列表、创建、保存、ZIP 导入、资源树/文本读取、启停和删除。MCP API 覆盖客户端 CRUD/启停/测试，以及：
+`app.db` 是 MindAgent 状态真相来源，至少包含：
 
 ```text
-GET/PUT /api/v1/mcp/{client_id}/tools
-GET/PUT /api/v1/mcp/{client_id}/policy
-POST     /api/v1/mcp/{client_id}/policy/clear-tool-effects
+schema_migrations, admin_users, admin_sessions,
+employees, channel_identities, agent_sessions,
+session_turns, session_events, processed_channel_events,
+pending_actions, model_settings, feishu_settings,
+mcp_clients, mcp_tools, mcp_tool_settings,
+knowledge_nodes, knowledge_document_versions,
+knowledge_index_jobs, knowledge_generations,
+audit_events
 ```
 
-Policy DTO 只包含 `default_effect` 与 `tool_effects[{tool_name,effect}]`；工具列表 DTO 同时返回服务端发现状态、白名单启用状态、有效策略和是否显式覆盖。不得在 API 中出现 source/subject 详细规则字段。
+表多不是拆库条件；首版写入规模和单 Worker 模式适合 SQLite。所有连接启用 WAL、foreign keys、busy timeout，事务保持短小，常用隔离键建立复合索引。未来多副本时通过 repository 边界迁移 PostgreSQL，不在首版双写。
 
-## 15. Providers / Observability / Deployment
-
-`providers` 定义 Chat Model 与 Embedding Provider 接口。OpenAI-compatible 和 Ollama 的专有字段停留在 Provider 实现内，Runtime/Knowledge 只依赖统一接口。新增 Provider 不修改上层能力模块。
-
-每个主 Agent、Sub-agent 和 review run 建立独立 trace；记录 run/session/user/task ID、模型、耗时和当前 ChannelAddress。内置工具、MCP 调用、策略决定与审批建立子 span，但不得记录未脱敏参数或凭据。默认不上传文件正文、密钥、临时 URL 或完整 Workspace 路径。Langfuse 未配置或上报失败时退化为本地结构化日志。
-
-部署只包含一个单 Worker MindAgent 容器、一个 NapCat 容器和持久数据卷。Ollama 是可选外部依赖。单进程使用异步 I/O，阻塞文件解析进入受限执行池。stdio MCP 的命令和依赖必须已存在于 MindAgent 容器内，由管理员负责安装和信任；MindAgent 不自动下载 MCP 包或 Skill 依赖。
-
-## 16. 代码目录、测试与扩展点
+Docker Compose 至少包含：
 
 ```text
-src/mindagent/
-├── app/             # 配置加载、依赖组装、启动与生命周期
-├── domain/          # 纯领域类型、ID、错误和跨模块契约
-├── api/             # REST、认证和管理台接口
-├── channels/
-│   └── qq/          # NapCat / OneBot v11 私聊适配
-├── runtime/         # Agent run 和运行时编排
-├── workspaces/      # 用户、Session、Workspace 和执行锁
-├── context/         # history、turn、headline、Scroll、recall
-├── persona/         # 四文件 Prompt 和用户资料工具
-├── capabilities/
-│   ├── tools/       # Tool Registry、启停覆盖和工具快照
-│   ├── skills/      # Skill 校验、导入和按需读取
-│   ├── mcp/         # MCP 客户端、工具发现和策略
-│   └── approvals/   # QQ 一次性工具审批
-├── tasks/           # TaskManager、Sub-agent、review
-├── knowledge/       # 文档、切块、索引和知识工具
-├── providers/       # Chat/Embedding Provider
-├── storage/         # repository、原子文件和安全路径
-└── observability/   # 日志、trace 和健康状态
-console/              # React 管理台
-tests/                # unit、contract、integration、e2e
-deploy/               # MindAgent + NapCat
+mindagent     # FastAPI、飞书长连接、Runtime、索引消费者、静态管理端
+mock-oa       # MCP 与 Demo Admin REST
 ```
 
-测试按模块边界组织：
+两者使用独立数据卷；Mock OA 只通过网络契约访问。Chroma 作为 MindAgent 本地持久索引，不新增独立向量服务。
 
-- unit：纯转换、路径校验、Scroll、Prompt、Skill/ZIP 校验、MCP 策略求值、切块和状态机；
-- contract：ChannelMessage、AgentRequest/Response、Tool Registry、MCP/Skill DTO、Provider、REST；
-- integration：Workspace 隔离、数据库、OneBot、MCP 两种 transport、审批、模型、知识索引和任务恢复；
-- e2e：并发 QQ 私聊、管理台菜单、四文件生效、内置工具热更新、MCP 策略/审批、Skill 按需读取、Scroll recall 和长任务验收。
+## 13. 安全、审计与故障退化
 
-扩展新渠道只新增 Channel Adapter；扩展 Provider 只实现 Provider 接口；新增内置工具只注册 ToolDescriptor；扩展新的能力模块必须通过 domain 契约接入 Runtime，不能绕过 Workspace 隔离、MCP 策略或 Storage 边界。
+- 管理员密码使用强哈希，Session cookie 使用 HttpOnly/SameSite；
+- 飞书凭据、模型密钥、MCP headers 和 Mock OA 管理 token 不回显；
+- 事件、确认、MCP 和知识变更建立结构化审计，参数按工具定义脱敏；
+- 飞书断线时健康状态降级，管理 Web 和知识管理仍可用；
+- 单个 MCP 故障不影响制度问答；Embedding 故障保留旧索引；
+- Langfuse 未配置或失败时退化为本地日志，不影响业务；
+- 禁用员工、身份解绑、策略 deny 和确认校验均 fail closed。
+
+## 14. 测试策略
+
+- unit：身份解析、日期与 Schema 校验、Scroll、headline、策略、动作状态机、切片和哈希；
+- contract：FeishuMessage、ActorContext、MCP 工具、REST DTO 和结构化错误；
+- integration：SQLite 约束、飞书事件去重、索引 generation、MCP 调用、确认重启恢复和 Mock OA 幂等；
+- e2e：两名员工隔离、知识问答、年假余额、确认卡片、提交、模拟审批状态更新和进度查询；
+- security：跨员工 recall、跨用户卡片、重放、过期、路径逃逸、密钥回显和日志快照。

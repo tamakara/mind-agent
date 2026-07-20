@@ -1,281 +1,171 @@
 # MindAgent 实现任务清单
 
-> 本文用于持续记录实现进度。完成子任务并通过对应验证后，将 `[ ]` 改为 `[x]`；只有阶段内全部任务与验收门槛完成后，才勾选阶段完成项。
+> 本文用于持续记录实现进度。完成子任务并通过对应验证后，将 `[ ]` 改为 `[x]`；阶段内全部任务与验收门槛完成后，才勾选阶段完成项。
 >
-> 当前基线：仓库已完成业务提案、强制规范和技术设计，尚未创建应用源码。
+> 当前基线：企业统一办公助手的业务提案、强制规范和技术设计已完成，尚未创建应用源码。
 
 ## 进度规则
 
-- [x] 业务范围、强制规范和技术设计已对齐并标记 Accepted
-- [x] Workspace 用户隔离边界与全局 Agent 能力边界已明确
-- [x] Skills scripts 首版只读不执行，MCP 详细主体规则不在首版范围
-- [ ] 每次实现提交同步更新本清单、相关测试和必要文档
-- [ ] 不以跳过测试、放宽安全约束或伪造成功结果的方式勾选任务
+- [x] 首版已收敛为单企业飞书文本私聊和年假闭环
+- [x] 员工确认与 OA 业务审批边界已明确
+- [x] Scroll、知识原文、MindAgent 状态和 Mock OA 业务数据的真相来源已明确
+- [ ] 每次实现提交同步更新任务、测试和必要文档
+- [ ] 不以跳过测试、放宽隔离或伪造成功结果的方式勾选任务
 
-## P0. 项目骨架与开发基线
+## P0. 工程基线
 
-- [ ] 创建 Python 3.12 `uv` 项目、`pyproject.toml`、`uv.lock` 和 `src/mindagent/` 包
-- [ ] 配置 FastAPI、Uvicorn、Pydantic v2、aiosqlite、LangGraph、模型 Provider、MCP 和测试依赖
+- [ ] 创建 Python 3.12 `uv` workspace、`pyproject.toml`、`uv.lock` 和 `src/mindagent/`
+- [ ] 创建独立 `mock-oa-service` Python 包和启动入口
+- [ ] 配置 FastAPI、Uvicorn、Pydantic v2、aiosqlite、LangGraph、OpenAI-compatible Provider、飞书 SDK、MCP 和 RAG 依赖
 - [ ] 创建 React 18、TypeScript、Vite、Ant Design 管理台骨架
-- [ ] 建立 backend unit/contract/integration 与 frontend unit/e2e 测试目录
-- [ ] 配置 Ruff、类型检查、前端 lint/format、pytest、Vitest 和 Playwright 命令
-- [ ] 建立 `.env.example`，只包含数据目录、监听地址和首次引导配置
-- [ ] 实现应用配置加载和 `<MINDAGENT_DATA_DIR>` 初始化
-- [ ] 建立结构化错误基类、request ID 中间件和统一 REST 响应格式
-- [ ] 建立 `/healthz`、`/readyz` 与应用启动/关闭生命周期
-- [ ] 验收：全新环境可安装依赖、启动空应用并通过基础检查
+- [ ] 配置 Ruff、类型检查、pytest、Vitest、Playwright 和前端 lint/format
+- [ ] 建立 backend unit/contract/integration、Mock OA 和 frontend/e2e 测试目录
+- [ ] 创建 `.env.example`，覆盖数据目录、监听地址、管理员引导值和必要凭据占位
+- [ ] 初始化 `<MINDAGENT_DATA_DIR>` 与 `<MOCK_OA_DATA_DIR>`，限制目录和数据库权限
+- [ ] 建立结构化错误、request ID、日志脱敏和统一 REST 错误响应
+- [ ] 实现 `/healthz`、`/readyz` 和有限超时的启动/关闭生命周期
+- [ ] 创建双服务 Docker Compose 和独立持久卷
+- [ ] 验收：全新环境可安装、启动 MindAgent/Mock OA，并通过基础检查
 - [ ] **P0 完成**
 
-## P1. Domain 契约与持久化基础
+## P1. 存储、认证与审计基础
 
-- [ ] 定义 UUID4、UTC RFC 3339、分页和 revision 公共类型
-- [ ] 定义 `ChannelAddress`、`ChannelMessage` 和全部 `MessageContent` 判别联合
-- [ ] 定义 `AgentRequest`、`AgentResponse`、工具调用、任务和审批领域类型
-- [ ] 定义稳定结构化错误码及 HTTP/工具错误映射
-- [ ] 实现 app.db schema 初始化与轻量版本迁移机制
+- [ ] 定义 UUID4、UTC RFC 3339、分页、revision 和结构化错误公共类型
+- [ ] 实现 `app.db` schema 迁移和 repository transaction
 - [ ] 所有 SQLite 连接启用 WAL、foreign keys 和 busy timeout
-- [ ] 实现 repository transaction、唯一约束和并发写入封装
+- [ ] 建立员工、身份、Session、Scroll、事件去重、待确认、配置、知识和审计基础表
+- [ ] 为隔离读取建立 `(employee_id, session_id, seq)` 等复合索引和唯一约束
 - [ ] 实现同目录临时文件、flush、fsync 和原子替换工具
-- [ ] 实现安全路径解析，拒绝绝对路径、`..`、符号链接逃逸和跨根目录访问
-- [ ] 限制数据目录和 app.db 文件权限，并建立日志脱敏工具
-- [ ] 为领域 DTO、数据库约束、原子文件和安全路径编写测试
-- [ ] 验收：schema 可重复初始化，失败写入不留下部分状态或半文件
+- [ ] 实现安全相对路径解析，拒绝绝对路径、`..` 和符号链接逃逸
+- [ ] 实现管理员首次初始化、密码哈希、登录、登出、Session 过期和登录限速
+- [ ] 实现管理员认证中间件、HttpOnly/SameSite cookie、CSRF 与同源保护
+- [ ] 实现审计写入器和按字段策略脱敏，不保存凭据、action token 或完整敏感参数
+- [ ] 编写 schema 重复初始化、约束、并发写、原子文件、认证和脱敏测试
+- [ ] 验收：失败事务不留下部分状态，未认证请求不能访问管理 API
 - [ ] **P1 完成**
 
-## P2. 管理员认证与管理台框架
+## P2. 员工目录与飞书身份
 
-- [ ] 实现管理员首次初始化、密码哈希、登录、登出和 Session 过期
-- [ ] 实现管理员认证中间件、CSRF/同源策略和登录限速
-- [ ] 创建管理台登录页、应用布局、错误边界和 API client
-- [ ] 按设计建立静态非折叠菜单：概览、管理、智能体、设置
-- [ ] 不提供 Web 测试聊天或其他 Agent 交互入口，不引入动态插件菜单
-- [ ] 建立路由占位页：用户、知识库、任务、人设文件、Skills、内置工具、MCP、模型、QQ 状态
-- [ ] 实现概览所需健康状态与基础统计 API
-- [ ] 为登录、权限拒绝、Session 过期、菜单顺序和路由刷新编写测试
-- [ ] 验收：未登录只能访问登录/健康接口，管理员可以访问全部占位页
+- [ ] 定义 `Employee`、`ChannelIdentity`、`ActorContext` 和 `FeishuMessage` 契约
+- [ ] 实现员工号唯一、主管引用、active/disabled 状态和 repository
+- [ ] 实现 identity `(channel, app_id, open_id)` 唯一与 unbound/bound 状态
+- [ ] 未知 `open_id` 首次消息只 upsert 待绑定 identity，不创建 Session 或 run
+- [ ] 实现管理员创建/编辑/启停员工和绑定/解绑 identity API
+- [ ] 绑定后原子创建或复用员工唯一 Session
+- [ ] 实现从当前绑定与员工快照构造只读 `ActorContext`
+- [ ] 禁止 Agent 参数覆盖 employee/open_id 等可信主体字段
+- [ ] 实现飞书官方 SDK 长连接、有限重连、健康状态和优雅关闭
+- [ ] 实现私聊文本事件转换、`event_id` 去重和非文本/群聊拒绝
+- [ ] 实现文本投递、交互卡片投递/更新和回复地址封装
+- [ ] 卡片事件在普通消息路由之前分流，不进入自由 Agent 推理
+- [ ] 编写并发首次消息、重复事件、禁用、解绑和跨身份测试
+- [ ] 验收：未知用户只得到绑定提示；绑定用户稳定复用 Session；两名员工不串用身份
 - [ ] **P2 完成**
 
-## P3. 用户、Session 与 Workspace
+## P3. Model Runtime 与 Scroll
 
-- [ ] 创建 users、channel_identities、agent_sessions 和 workspaces 表及 repository
-- [ ] 以 `(channel, account_id, platform_user_id)` 原子解析或创建内部用户
-- [ ] 首次有效私聊原子创建唯一 Session、Workspace 和目录结构
-- [ ] Workspace 目录只使用内部用户 UUID，不使用 QQ ID
-- [ ] 实现每用户 Session 异步执行锁和不同用户并发
-- [ ] 实现用户启用/禁用；禁用用户不能创建新 run 或任务
-- [ ] 实现 Workspace files/artifacts/tasks 注册与安全读写
-- [ ] 创建用户列表、详情和启停 API
-- [ ] 用户详情承载 PROFILE、MEMORY、历史、文件、产物和任务入口，不创建独立 Workspace 菜单
-- [ ] 编写并发首次创建、唯一约束、跨用户访问和路径逃逸测试
-- [ ] 验收：两名用户的 Session、目录、文件和锁完全隔离
+- [ ] 定义 OpenAI-compatible Chat/Embedding Provider 接口
+- [ ] 实现模型配置脱敏 CRUD、revision、连通性测试和超时
+- [ ] 创建代码维护的办公助手系统 Prompt，不加载用户或 Persona 文件
+- [ ] 建立 LangGraph 主 Agent loop、最大迭代、总超时和工具超时
+- [ ] Runtime 只从 Feishu Adapter 接收已验证 `ActorContext` 和 `FeishuMessage`
+- [ ] 实现每员工 Session 异步执行锁和不同员工并发
+- [ ] 创建 `session_turns`、`session_events` 及递增 seq repository
+- [ ] 逐字保存用户、Agent、知识/MCP 工具、动作创建和脱敏结果事件
+- [ ] 实现 headline 结构化解析、200 字符限制和确定性回退
+- [ ] 按完整 turn 和 token 预算构建 live context，不拆 tool call/result
+- [ ] 实现 `[context compressed]` 与最近 20 个 headline 导航
+- [ ] 实现 `recall_session_history(expand/search)`，强制绑定 ActorContext
+- [ ] 搜索优先 FTS5，不可用时降级为参数化 LIKE
+- [ ] 普通申请回合在确认卡片投递后完成并释放 Session 锁
+- [ ] 编写 Prompt、turn 完整性、预算、headline、并发和跨员工 recall 测试
+- [ ] 验收：旧回合被驱逐后仍能按 headline 展开/搜索逐字原文，不能跨员工读取
 - [ ] **P3 完成**
 
-## P4. Persona / Profile / Memory
+## P4. 目录化 Knowledge / RAG
 
-- [ ] 首次启动初始化 `persona/AGENTS.md` 和 `persona/SOUL.md`
-- [ ] 创建用户 Workspace 时初始化 PROFILE.md 和 MEMORY.md
-- [ ] 实现 frontmatter 剥离和固定顺序 Prompt Builder
-- [ ] 每次 run 重新读取四文件正文，不缓存文件内容
-- [ ] 实现全局人设 GET/PUT API、32 KiB 限制、SHA-256 revision 和冲突检查
-- [ ] 实现 `read_user_context_file` 与 `replace_user_context_file`
-- [ ] 通用文件工具禁止修改、删除或重命名 PROFILE/MEMORY
-- [ ] 创建人设文件页面和用户详情中的 PROFILE/MEMORY 编辑器
-- [ ] 显示 revision 冲突并允许管理员重新加载，不静默覆盖
-- [ ] 编写注入顺序、原子替换、大小限制、revision 和跨用户测试
-- [ ] 验收：全局文件影响所有用户下一次 run，用户文件只影响所属用户
+- [ ] 创建 `knowledge/originals`、`staging`、`index` 目录和知识 schema
+- [ ] 实现目录树节点、稳定文档 ID、父子唯一名称和相对路径
+- [ ] 实现目录/文档创建、移动、重命名、保存、删除 API
+- [ ] 只接受 UTF-8 `.md`/`.txt` 和 10 MiB 限制，所有路径经过安全解析
+- [ ] 保存使用 `expected_revision`、原子替换和 SHA-256 内容去重
+- [ ] 内容变化时创建新版本与 queued 索引任务；哈希未变不计算 Embedding
+- [ ] Markdown 按标题层级切分，TXT 递归字符切分，并保存原文行号
+- [ ] 实现单并发索引消费者和 queued/indexing 重启恢复
+- [ ] 实现 pending/active generation，全成功后原子切换
+- [ ] 失败保存结构化错误和重试入口，旧 active generation 继续服务
+- [ ] 移动/重命名只更新路径元数据，内容不变时不重新 Embedding
+- [ ] 删除清理原文、chunk 元数据和全部向量 generation
+- [ ] 启动 Reconciler 对账原文、元数据和索引，不一致项排队修复
+- [ ] 实现 `search_knowledge`、`list_knowledge_directory` 和按行 `read_knowledge_document`
+- [ ] 检索结果包含文档 ID、版本、路径、标题路径、行号、片段和分数
+- [ ] 创建知识目录树、编辑器、索引状态、错误和重试 UI
+- [ ] 编写路径、revision、哈希、切片定位、generation、重命名和故障测试
+- [ ] 验收：保存自动索引，失败不影响旧索引，纯重命名不产生 Embedding 调用
 - [ ] **P4 完成**
 
-## P5. Model Providers 与基础 Runtime
+## P5. MCP 与持久化员工确认
 
-- [ ] 定义统一 Chat Model 与 Embedding Provider 接口
-- [ ] 实现 OpenAI-compatible Chat Provider
-- [ ] 实现 OpenAI-compatible 与外部 Ollama Embedding Provider
-- [ ] 创建模型配置表、脱敏 CRUD 和连通性测试 API
-- [ ] 实现模型配置页面；敏感字段省略保留、`null` 清除、掩码不可写回
-- [ ] 建立 LangGraph 主 Agent loop 和最大迭代/超时限制
-- [ ] Runtime 从 `AgentRequest` 解析用户、Session、Workspace 和 ChannelAddress
-- [ ] 定义每次 run 的不可变 Runtime/Capability Snapshot
-- [ ] 实现 `AgentResponse` 到统一内容与产物引用的输出
-- [ ] 编写 Provider mock、配置脱敏和 run 隔离测试
-- [ ] 验收：管理员可配置并测试模型连通性，Agent run 仍只由 QQ 私聊触发
+- [ ] 定义 `ToolDescriptor`、`McpToolEffect` 和执行快照契约
+- [ ] 创建 mcp_clients、mcp_tools、mcp_tool_settings repository
+- [ ] 只实现 Streamable HTTP 状态化客户端和敏感 headers 脱敏语义
+- [ ] 实现客户端连接、重连、关闭、工具发现和单客户端故障隔离
+- [ ] 实现安全模型工具名、原始名称映射和冲突拒绝
+- [ ] 实现工具白名单与 `allow/confirm/deny` 策略独立求值
+- [ ] 新客户端和新发现工具默认 `deny`；deny 在执行端之前拒绝
+- [ ] 从模型 Schema 移除主体字段和幂等键，并在执行包装器注入 ActorContext
+- [ ] 创建 `pending_actions` repository、状态约束和唯一幂等键
+- [ ] 规范化工具参数并计算哈希，生成确定性确认摘要和安全随机 token
+- [ ] 数据库只存 token 哈希；飞书卡片只携带原 token 和决定
+- [ ] `confirm` 在当前 run 只创建动作和卡片，确保 MCP 零调用
+- [ ] 卡片投递失败时原子取消动作，禁止不可见动作被后续执行
+- [ ] 回调校验 identity、员工状态、地址、token、有效期、参数哈希和工具策略
+- [ ] 通过条件更新原子抢占 pending；取消和重复回调保持幂等
+- [ ] 确认创建独立 confirmation turn，不启动 LLM，并调用 MCP
+- [ ] 执行结果更新动作、Scroll、卡片和原飞书私聊回复
+- [ ] 启动时过期旧 pending，并用幂等键恢复遗留 executing
+- [ ] 创建 MCP 客户端、工具发现、白名单和策略 UI
+- [ ] 编写策略、Schema 主体剥离、跨用户、过期、重放、竞态、重启和脱敏测试
+- [ ] 验收：allow 直接执行；confirm 未确认零执行；deny 零连接；重复确认只产生一个业务请求
 - [ ] **P5 完成**
 
-## P6. Context / Scroll
+## P6. 独立 Mock OA 服务
 
-- [ ] 为每个 Workspace 初始化独立 history.db
-- [ ] 创建 session_history schema，支持 seq、turn_id、角色、正文、工具关联、headline 和地址
-- [ ] 完整持久化用户消息、Agent 回复、tool call/result、Sub-agent 和 review 关联事件
-- [ ] 实现 headline 解析、200 字符限制和确定性回退
-- [ ] 按完整 turn 构建 live context，禁止拆开 tool call/result
-- [ ] 实现 token 预算和从最旧完成 turn 开始的驱逐
-- [ ] 实现 `[context compressed]` 索引和最近 20 个 headline 导航
-- [ ] 实现 `recall_session_history(expand)` 与 `search`
-- [ ] search 优先使用 FTS5，不可用时安全降级为参数化 LIKE
-- [ ] 保证 recall 只绑定当前 Session，且不与 QQ 历史或 Knowledge 隐式回退
-- [ ] 编写 turn 完整性、预算边界、headline、并发写入和跨用户测试
-- [ ] 验收：被驱逐历史可以导航、展开和搜索原文，不能跨用户召回
+- [ ] 初始化 `mock_oa.db` 迁移、WAL、员工余额、请假申请和幂等表
+- [ ] 创建与 MindAgent 分离的 Mock OA 配置、健康检查和结构化错误
+- [ ] 实现可信员工主体传输约定并拒绝缺失或非法主体
+- [ ] 实现 `query_leave_balance` MCP 工具
+- [ ] 实现 `submit_leave_request` 的日期、工作日、余额和重复申请校验
+- [ ] 在同一事务中按 `(employee_id, idempotency_key)` 创建或返回原申请
+- [ ] 新申请固定进入 `pending_approval` 并返回业务单号
+- [ ] 实现 `query_leave_request_status`，只返回当前员工自己的申请
+- [ ] 实现受管理 token 保护的 Demo Admin REST 状态更新，仅允许 approved/rejected
+- [ ] 确保状态更新接口不注册为 MCP 工具、不进入 Agent Prompt
+- [ ] 提供本地演示种子员工、余额和示例制度文档
+- [ ] 编写余额隔离、重复日期、余额不足、幂等、越权和状态更新测试
+- [ ] 验收：超时重试只创建一张申请；MindAgent 只能查询而不能执行业务审批
 - [ ] **P6 完成**
 
-## P7. QQ Channel Adapter
+## P7. 最小管理端与端到端验收
 
-- [ ] 实现 NapCat OneBot v11 反向 WebSocket 接入和生命周期管理
-- [ ] 实现事件去重、心跳、连接状态和 `echo` Future 关联
-- [ ] 建立实时事件与历史结果共用的 OneBot Message Converter
-- [ ] 完整转换 text、mention、quote、image、audio、video、file 和 unsupported
-- [ ] 实现 QQ 文件注册与稳定 `file_ref`，不向 Agent 暴露临时 URL/绝对路径
-- [ ] 将 `AgentResponse` 转换为规定的 OneBot 输出动作
-- [ ] 实现 `query_channel_history` 的锚点验证、不透明 cursor 和当前私聊约束
-- [ ] 查询结果仅用于当前 run，不写入 history.db、Workspace 或 Knowledge
-- [ ] 实现只读 `/api/v1/qq/status` 和 QQ 状态页
-- [ ] 在创建普通 AgentRequest 前预留审批命令截获入口
-- [ ] 编写 OneBot fixtures、实时/历史转换一致性、跨窗口拒绝和断线测试
-- [ ] 验收：QQ 私聊完成收发闭环，历史补偿不能越出当前私聊
+- [ ] 创建登录页、应用布局、API client、错误边界和紧凑菜单
+- [ ] 实现概览健康状态与员工、知识、MCP、飞书连接基础统计
+- [ ] 创建员工列表/详情、启停和待绑定 identity 绑定界面
+- [ ] 集成 P4 知识树、编辑器、保存冲突和索引状态界面
+- [ ] 集成 P5 MCP 客户端、工具白名单和策略界面
+- [ ] 创建 OpenAI-compatible Chat/Embedding 配置与测试页面
+- [ ] 创建只读飞书状态页并展示待绑定 identity 入口
+- [ ] 创建按员工、事件、工具、动作、业务单号和结果筛选的脱敏审计页
+- [ ] 确认 Web 不提供测试聊天、业务审批或任意 MCP 调用入口
+- [ ] 编写管理员登录、员工绑定、知识编辑、配置脱敏和菜单 Playwright 测试
+- [ ] 编写未知用户、绑定、余额查询、制度检索、确认提交和状态查询端到端测试
+- [ ] 编写两名员工并发、跨用户卡片、过期/取消/重复确认和重启恢复端到端测试
+- [ ] 故障注入验证飞书断线、MCP 故障、Embedding 故障和旧索引退化
+- [ ] 快照检查 API、日志和审计不泄露密钥、token 或完整敏感参数
+- [ ] 编写本地启动、飞书应用配置、Mock OA 演示和数据卷说明
+- [ ] 验收：README 的最小链路可独立复现，全部首版验收红线通过
 - [ ] **P7 完成**
 
-## P8. 内置工具与 Tool Registry
+## 首版之后
 
-- [ ] 实现 `ToolDescriptor`、代码级 Tool Registry 和重复名称检查
-- [ ] 明确首版所有内置工具的名称、分类、默认启用状态和参数 Schema
-- [ ] 创建 builtin_tool_settings 表与全局覆盖 repository
-- [ ] 合并 Registry 默认值和数据库覆盖，生成不可变工具快照
-- [ ] 将 Persona、Context、Knowledge、Task、Workspace 等工具接入 Registry
-- [ ] 标记 Runtime 必需能力为 `configurable=false`，不显示管理开关
-- [ ] 实现工具列表、单个启停和批量启停 API
-- [ ] 创建内置工具页面，支持搜索、分类、单个和全部启停
-- [ ] 工具执行从当前 AgentRequest 推导用户边界，不接受任意 user_id 或绝对路径
-- [ ] 编写默认值、覆盖、热更新、重复名称、系统保留工具和安全边界测试
-- [ ] 验收：配置只影响后续 run，任何开关都不能关闭 Workspace/Persona 安全约束
-- [ ] **P8 完成**
-
-## P9. Skills
-
-- [ ] 创建 skills 表、全局 skills 根目录和 SkillService
-- [ ] 实现 `skill_key`、UTF-8 `SKILL.md`、frontmatter 和 128 KiB 限制校验
-- [ ] 实现按相对路径排序的整目录 revision 哈希
-- [ ] 创建/编辑/覆盖使用 `expected_revision` 乐观并发控制
-- [ ] 实现 staged directory 和原子安装/替换/删除
-- [ ] 实现 ZIP 导入的 5 MiB、20 MiB 解压、256 文件限制
-- [ ] 拒绝 ZIP 绝对路径、`..`、符号链接、硬链接和压缩炸弹
-- [ ] 实现 Skill 列表、搜索、创建、保存、导入、资源树、启停和删除 API
-- [ ] 实现系统保留 `read_skill_resource`，限制根目录、UTF-8 和单次 64 KiB
-- [ ] Prompt 只注入启用 Skill 的 key/name/description 目录
-- [ ] 确保 scripts 可列出、查看和下载，但没有执行入口且通用 Workspace 工具不可访问
-- [ ] 创建 Skills 页面、编辑抽屉、资源树、导入和冲突处理 UI
-- [ ] 编写 revision、原子性、ZIP 攻击、二进制、路径逃逸和 scripts 不可执行测试
-- [ ] 验收：Skill 可完整管理并按需读取，恶意包不能写出 skills 根目录
-- [ ] **P9 完成**
-
-## P10. MCP 客户端与工具策略
-
-- [ ] 创建 mcp_clients 和 mcp_tool_settings 表及 repository
-- [ ] 实现安全唯一 `client_key` 和敏感配置脱敏/保留/清除语义
-- [ ] 实现 stdio 配置判别校验和状态化客户端
-- [ ] 实现 Streamable HTTP 配置判别校验和状态化客户端
-- [ ] 实现标准 `mcpServers` JSON 单个/批量导入
-- [ ] MCPManager 启动时并发连接启用客户端，单客户端失败隔离
-- [ ] 实现客户端级关闭、重建、重连和应用退出清理
-- [ ] 实现工具发现、原始名称映射、OpenAI 安全名称规范化和冲突拒绝
-- [ ] 实现白名单：`null` 暴露全部、`[]` 全部关闭、显式数组只暴露列出工具
-- [ ] 实现策略：`tool_effect ?? default_effect`，新客户端默认 `ask`
-- [ ] 实现逐工具继承/覆盖、修改默认不删除覆盖和清除全部覆盖
-- [ ] `deny` 在连接执行端前返回 `MCP_TOOL_DENIED`
-- [ ] 实现 MCP 客户端 CRUD、启停、测试、工具和策略 API
-- [ ] 创建 MCP 卡片、配置编辑、工具列表、Schema 和策略 UI
-- [ ] 编写两种 transport、故障隔离、白名单、策略优先级、热更新和名称冲突测试
-- [ ] 验收：多个 MCP 独立运行，客户端变更不改写正在执行的 run 快照
-- [ ] **P10 完成**
-
-## P11. MCP Approval Service
-
-- [ ] 创建 tool_approvals 表和状态机：pending → approved/denied/expired/cancelled
-- [ ] 创建不可预测的一次性审批码并设置 120 秒过期
-- [ ] 审批绑定用户、Session、run、tool call、工具名和原始 ChannelAddress
-- [ ] QQ Adapter 截获 `/approve <code>` 与 `/deny <code>`，不创建新 Agent run
-- [ ] 审批命令绕过被等待 run 持有的 Session 锁，但只能完成审批决策
-- [ ] 拒绝跨用户、跨 Session、跨地址、重复、过期和未知审批码
-- [ ] `ask` 策略等待有效决定后才调用 MCP 执行端
-- [ ] 后台无审批表面时立即返回 `MCP_APPROVAL_UNAVAILABLE`
-- [ ] 服务启动时将遗留 pending 审批标记 expired
-- [ ] 审批记录和日志不保存未脱敏凭据或完整敏感参数
-- [ ] 编写竞态、超时、重放、身份绑定、Session 锁和重启恢复测试
-- [ ] 验收：`allow/ask/deny` 分别完成直接执行、确认后执行和零执行拒绝
-- [ ] **P11 完成**
-
-## P12. Knowledge / RAG
-
-- [ ] 创建 knowledge.db、originals、staging 和 chroma 目录
-- [ ] 创建文档、版本、chunk、generation 和索引任务 schema
-- [ ] 实现 UTF-8 `.txt`/`.md`、10 MiB 限制和同名默认拒绝
-- [ ] 实现 Markdown 标题感知切分和 TXT 递归字符切分
-- [ ] 保存标题路径、原文起止行、实际切块参数和 generation
-- [ ] 实现 Embedding 连通性测试和首次空 active collection
-- [ ] 实现单并发索引队列及 queued/indexing 重启恢复
-- [ ] 实现 active/pending generation 构建与全成功原子切换
-- [ ] 替换、重建或 Provider 迁移失败时继续使用旧 active generation
-- [ ] 实现文档列表、上传、替换、重试、重建、删除和原文读取 API/UI
-- [ ] 实现 `search_knowledge`、`list_knowledge_documents`、`read_knowledge_document`
-- [ ] Knowledge 工具保持 Agent 只读且不按用户改变可见范围
-- [ ] 编写切块定位、generation 切换、失败回退、删除和 Provider 故障测试
-- [ ] 验收：索引迁移失败不影响旧索引查询，Agent 可回到带行号原文
-- [ ] **P12 完成**
-
-## P13. Tasks / Sub-agent / Review
-
-- [ ] 创建 tasks 表、状态约束和 Task repository
-- [ ] 实现进程内队列、每用户并发 1、全局并发 4
-- [ ] 保存原始请求、验收条件、用户、Session、Workspace 和投递地址
-- [ ] Sub-agent 使用独立 run、能力快照和任务目录
-- [ ] Sub-agent 只提交候选结果，不直接投递用户
-- [ ] 主 Agent 使用独立 review run 返回强类型验收结果
-- [ ] 首次失败携带返工意见执行唯一一次返工
-- [ ] 第二次失败后终止，不继续循环
-- [ ] 启动时 queued 继续等待，running/reviewing 转 interrupted
-- [ ] 实现任务列表、详情、取消 API 和管理台页面
-- [ ] 最终结果只投递到任务创建时记录的原始 ChannelAddress
-- [ ] 编写状态机、并发限制、返工上限、重启和跨用户测试
-- [ ] 验收：候选结果必须验收后才能发送，服务重启不伪造任务成功
-- [ ] **P13 完成**
-
-## P14. 可观测性、安全与故障退化
-
-- [ ] 为主 Agent、Sub-agent 和 review run 建立独立 trace
-- [ ] 为 LLM、内置工具、MCP、策略决定、审批、知识索引建立子 span
-- [ ] 记录必要 ID、模型、耗时和结构化错误，不上传密钥或完整路径
-- [ ] 接入可选 Langfuse；不可用时退化为本地结构化日志
-- [ ] 实现有限超时 flush 和不阻断应用关闭
-- [ ] 健康状态覆盖 DB、QQ、模型、Embedding、MCP 和后台队列
-- [ ] 对管理员登录、上传、MCP 测试和审批接口增加限速
-- [ ] 审核所有 API 响应、异常和日志的凭据脱敏
-- [ ] 验证被禁用用户、跨 Workspace、Skill 路径和 MCP 策略均 fail closed
-- [ ] 编写降级、超时、敏感数据快照和故障注入测试
-- [ ] 验收：可观测性组件失败不影响核心 run，安全组件失败不放行受控操作
-- [ ] **P14 完成**
-
-## P15. 全链路测试、部署与发布
-
-- [ ] 编写管理员 Web 端到端流程：登录、菜单、人设、用户、Skills、工具、MCP、Knowledge、任务和设置
-- [ ] 编写两名 QQ 用户并发私聊端到端测试
-- [ ] 编写四文件生效、Scroll recall、知识检索和长任务验收端到端测试
-- [ ] 编写 MCP allow/ask/deny 和 QQ 审批端到端测试
-- [ ] 编写 Skill ZIP 攻击与 scripts 不可执行端到端安全测试
-- [ ] 运行并通过 backend unit/contract/integration 全套测试
-- [ ] 运行并通过 frontend unit 与 Playwright 全套测试
-- [ ] 运行静态检查、类型检查、依赖审计和 secret scan
-- [ ] 创建单 Worker MindAgent + NapCat Docker Compose 和持久卷
-- [ ] 容器启动时验证数据目录权限、schema 初始化和健康检查
-- [ ] 文档说明 stdio MCP 依赖必须预装，系统不自动下载 MCP/Skill 依赖
-- [ ] 编写安装、升级、备份凭据风险、故障排查和运维文档
-- [ ] 使用干净数据目录完成一次发布候选安装与验收
-- [ ] 对照 `docs/spec.md` 第 14 节逐项签收首版验收条件
-- [ ] **P15 完成：首版可发布**
-
-## 暂不实施（非任务）
-
-- QQ 群聊和第二渠道
-- 多 Agent 与 per-Agent 能力配置
-- 插件系统和动态菜单注册
-- Skill 脚本执行、沙箱和依赖自动安装
-- 技能市场、在线安装和自动更新
-- MCP SSE、OAuth、Resources、Prompts 和详细主体规则
-- 自动记忆整理、后台 dream 和 memory_search
-- 备份恢复中心、迁移中心和多服务拆分
+只有在年假 MVP 验收后再评估：飞书通讯录同步、部门知识权限、请假撤销、报销附件、真实 OA、PostgreSQL、多副本、多企业、多渠道和长期个性化偏好。以上能力不得提前进入首版实现。
