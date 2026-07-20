@@ -29,13 +29,7 @@ const serviceStatuses = [
 export function App() {
   return (
     <Layout className="app-shell">
-      <Sider
-        className="app-sider"
-        width={224}
-        breakpoint="lg"
-        collapsedWidth={0}
-        theme="light"
-      >
+      <Sider className="app-sider" width={224} breakpoint="lg" collapsedWidth={0} theme="light">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
             W

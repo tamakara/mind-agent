@@ -15,8 +15,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           borderRadius: 6,
           colorPrimary: "#176b4d",
           colorText: "#202522",
-          fontFamily:
-            'Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+          fontFamily: 'Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
         },
       }}
     >

@@ -8,3 +8,5 @@ frontend/dist/
 frontend/.npm-cache/
 frontend/*.tsbuildinfo
 frontend/*.log
+frontend/playwright-report/
+frontend/test-results/
