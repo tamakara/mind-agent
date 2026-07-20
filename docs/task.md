@@ -19,8 +19,8 @@
 - [x] 配置 FastAPI、Uvicorn、Pydantic v2、aiosqlite、LangGraph、OpenAI-compatible Provider、飞书 SDK、MCP 和 RAG 依赖
 - [x] 创建 React 18、TypeScript、Vite、Ant Design 管理台骨架
 - [x] 配置 Ruff、类型检查、pytest、Vitest、Playwright 和前端 lint/format
-- [ ] 建立 backend unit/contract/integration、Mock OA 和 frontend/e2e 测试目录
-- [ ] 创建 `.env.example`，覆盖数据目录、监听地址、管理员引导值和必要凭据占位
+- [x] 建立 backend unit/contract/integration、Mock OA 和 frontend/e2e 测试目录
+- [x] 创建 `.env.example`，覆盖数据目录、监听地址、管理员引导值和必要凭据占位
 - [ ] 初始化 `<WORKHUB_DATA_DIR>` 与 `<MOCK_OA_DATA_DIR>`，限制目录和数据库权限
 - [ ] 建立结构化错误、request ID、日志脱敏和统一 REST 错误响应
 - [ ] 实现 `/healthz`、`/readyz` 和有限超时的启动/关闭生命周期
