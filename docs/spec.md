@@ -1,4 +1,4 @@
-# MindAgent 强制规范
+# WorkHub 强制规范
 
 > 状态：Accepted
 >
@@ -10,7 +10,7 @@
 - 内部 ID MUST 使用 UUID4；持久时间 MUST 使用 UTC RFC 3339；
 - API 字段 MUST 使用 `snake_case`；
 - 飞书 ID、事件 ID、消息 ID 和审批业务单号 MUST 作为不透明字符串处理；
-- 首版 MUST 以单企业、单飞书应用、单 MindAgent Worker 运行；
+- 首版 MUST 以单企业、单飞书应用、单 WorkHub Worker 运行；
 - `app.db` MUST 使用 SQLite WAL、foreign keys 和 busy timeout；
 - Chat 与 Embedding MUST 只支持 OpenAI-compatible Provider。
 
@@ -145,7 +145,7 @@ Scroll MUST 遵循：
 
 ### 6.1 原文与目录
 
-- `<MINDAGENT_DATA_DIR>/knowledge/originals/` MUST 是知识正文真相来源；
+- `<WORKHUB_DATA_DIR>/knowledge/originals/` MUST 是知识正文真相来源；
 - 管理 API MUST 支持目录和 UTF-8 `.md`/`.txt` 文档的创建、保存、移动、重命名和删除；
 - 首版 MUST NOT 监听管理员在磁盘上的直接修改；所有受支持变更必须经过管理 API；
 - 路径 MUST 使用安全相对路径，并拒绝绝对路径、`..`、符号链接逃逸和越出 originals 根目录；
@@ -231,7 +231,7 @@ pending -> expired
 
 ## 9. Mock OA 服务
 
-Mock OA MUST 独立进程部署并使用独立 `mock_oa.db`。它拥有余额、请假申请、审批状态和幂等记录，MindAgent 不得直接读写该数据库。
+Mock OA MUST 独立进程部署并使用独立 `mock_oa.db`。它拥有余额、请假申请、审批状态和幂等记录，WorkHub 不得直接读写该数据库。
 
 MCP 工具固定为：
 
@@ -242,13 +242,13 @@ submit_leave_request(start_date, end_date, leave_type, reason?, idempotency_key)
 query_leave_request_status(request_id) -> {request_id, status, updated_at}
 ```
 
-- 工具的员工主体必须来自 MindAgent 注入的可信调用上下文，不得接受模型自由选择；
+- 工具的员工主体必须来自 WorkHub 注入的可信调用上下文，不得接受模型自由选择；
 - `submit_leave_request` MUST 校验日期顺序、工作日、余额和重复申请；
 - 同一员工与同一幂等键 MUST 永远返回同一申请，不得重复扣减余额；
 - 业务状态只允许 `pending_approval`、`approved`、`rejected`；
-- MindAgent 只查询状态，不提供改变状态的 MCP 工具；
+- WorkHub 只查询状态，不提供改变状态的 MCP 工具；
 - Mock OA MAY 提供独立管理 REST 接口修改状态，但 MUST 使用管理令牌认证并仅用于本地演示与测试；
-- Mock OA 故障必须表现为真实结构化失败，MindAgent 不得伪造成功。
+- Mock OA 故障必须表现为真实结构化失败，WorkHub 不得伪造成功。
 
 ## 10. 管理 Web 与 REST
 
@@ -285,7 +285,7 @@ REST API 至少按领域分组：
 数据布局固定为：
 
 ```text
-<MINDAGENT_DATA_DIR>/
+<WORKHUB_DATA_DIR>/
 ├── app.db
 ├── knowledge/
 │   ├── originals/
@@ -301,7 +301,7 @@ REST API 至少按领域分组：
 
 审计 MUST 记录请求主体、飞书事件、知识版本、工具名、策略决定、动作状态、幂等键摘要、业务单号、耗时和结构化错误；MUST NOT 记录密钥、卡片 token、未脱敏完整参数或不必要的员工隐私。
 
-部署 MUST 至少包含 MindAgent 和 Mock OA 两个独立服务及独立持久卷。MindAgent 首版只运行一个 Worker；未来迁移 PostgreSQL 或多副本不进入首版。
+部署 MUST 至少包含 WorkHub 和 Mock OA 两个独立服务及独立持久卷。WorkHub 首版只运行一个 Worker；未来迁移 PostgreSQL 或多副本不进入首版。
 
 ## 12. 首版验收红线
 

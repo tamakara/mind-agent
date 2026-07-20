@@ -1,31 +1,31 @@
-# MindAgent 实现任务清单
+# WorkHub 实现任务清单
 
 > 本文用于持续记录实现进度。完成子任务并通过对应验证后，将 `[ ]` 改为 `[x]`；阶段内全部任务与验收门槛完成后，才勾选阶段完成项。
 >
-> 当前基线：企业统一办公助手的业务提案、强制规范和技术设计已完成，尚未创建应用源码。
+> 当前基线：对话式企业服务入口的业务提案、强制规范和技术设计已完成，尚未创建应用源码。
 
 ## 进度规则
 
 - [x] 首版已收敛为单企业飞书文本私聊和年假闭环
 - [x] 员工确认与 OA 业务审批边界已明确
-- [x] Scroll、知识原文、MindAgent 状态和 Mock OA 业务数据的真相来源已明确
+- [x] Scroll、知识原文、WorkHub 状态和 Mock OA 业务数据的真相来源已明确
 - [ ] 每次实现提交同步更新任务、测试和必要文档
 - [ ] 不以跳过测试、放宽隔离或伪造成功结果的方式勾选任务
 
 ## P0. 工程基线
 
-- [ ] 创建 Python 3.12 `uv` workspace、`pyproject.toml`、`uv.lock` 和 `src/mindagent/`
+- [ ] 创建 Python 3.12 `uv` workspace、`pyproject.toml`、`uv.lock` 和 `src/workhub/`
 - [ ] 创建独立 `mock-oa-service` Python 包和启动入口
 - [ ] 配置 FastAPI、Uvicorn、Pydantic v2、aiosqlite、LangGraph、OpenAI-compatible Provider、飞书 SDK、MCP 和 RAG 依赖
 - [ ] 创建 React 18、TypeScript、Vite、Ant Design 管理台骨架
 - [ ] 配置 Ruff、类型检查、pytest、Vitest、Playwright 和前端 lint/format
 - [ ] 建立 backend unit/contract/integration、Mock OA 和 frontend/e2e 测试目录
 - [ ] 创建 `.env.example`，覆盖数据目录、监听地址、管理员引导值和必要凭据占位
-- [ ] 初始化 `<MINDAGENT_DATA_DIR>` 与 `<MOCK_OA_DATA_DIR>`，限制目录和数据库权限
+- [ ] 初始化 `<WORKHUB_DATA_DIR>` 与 `<MOCK_OA_DATA_DIR>`，限制目录和数据库权限
 - [ ] 建立结构化错误、request ID、日志脱敏和统一 REST 错误响应
 - [ ] 实现 `/healthz`、`/readyz` 和有限超时的启动/关闭生命周期
 - [ ] 创建双服务 Docker Compose 和独立持久卷
-- [ ] 验收：全新环境可安装、启动 MindAgent/Mock OA，并通过基础检查
+- [ ] 验收：全新环境可安装、启动 WorkHub/Mock OA，并通过基础检查
 - [ ] **P0 完成**
 
 ## P1. 存储、认证与审计基础
@@ -132,7 +132,7 @@
 ## P6. 独立 Mock OA 服务
 
 - [ ] 初始化 `mock_oa.db` 迁移、WAL、员工余额、请假申请和幂等表
-- [ ] 创建与 MindAgent 分离的 Mock OA 配置、健康检查和结构化错误
+- [ ] 创建与 WorkHub 分离的 Mock OA 配置、健康检查和结构化错误
 - [ ] 实现可信员工主体传输约定并拒绝缺失或非法主体
 - [ ] 实现 `query_leave_balance` MCP 工具
 - [ ] 实现 `submit_leave_request` 的日期、工作日、余额和重复申请校验
@@ -143,7 +143,7 @@
 - [ ] 确保状态更新接口不注册为 MCP 工具、不进入 Agent Prompt
 - [ ] 提供本地演示种子员工、余额和示例制度文档
 - [ ] 编写余额隔离、重复日期、余额不足、幂等、越权和状态更新测试
-- [ ] 验收：超时重试只创建一张申请；MindAgent 只能查询而不能执行业务审批
+- [ ] 验收：超时重试只创建一张申请；WorkHub 只能查询而不能执行业务审批
 - [ ] **P6 完成**
 
 ## P7. 最小管理端与端到端验收

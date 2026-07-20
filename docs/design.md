@@ -1,4 +1,4 @@
-# MindAgent 技术设计
+# WorkHub 技术设计
 
 > 状态：Accepted
 >
@@ -6,13 +6,13 @@
 
 ## 1. 技术基线与原则
 
-MindAgent 是单企业、单飞书应用、单 Agent、多员工隔离的自托管应用。首版遵循：
+WorkHub 是单企业、单飞书应用、单 Agent、多员工隔离的自托管应用。首版遵循：
 
 - **可信身份先于推理**：只有已绑定、启用的员工可以进入 Runtime；
 - **入口与内核分离**：飞书 SDK 事件先转换为领域消息；
 - **主体不可由模型选择**：所有企业工具使用服务端 `ActorContext`；
 - **原文与索引分离**：知识文件是真相，chunk 和向量可重建；
-- **确认与业务审批分离**：MindAgent 只取得申请人确认，OA 拥有审批状态；
+- **确认与业务审批分离**：WorkHub 只取得申请人确认，OA 拥有审批状态；
 - **持久动作代替等待 run**：确认期间不占用模型、锁或连接；
 - **单库不等于无边界**：`app.db` 内按 repository 和外键划分所有权，Mock OA 使用独立数据库；
 - **首版克制**：只实现文本私聊、年假链路和最小管理端。
@@ -30,7 +30,7 @@ MindAgent 是单企业、单飞书应用、单 Agent、多员工隔离的自托�
 | 观测 | 结构化日志、审计表、可选 Langfuse |
 | 测试 | pytest、pytest-asyncio、Vitest、Playwright |
 
-统一命名：产品 `MindAgent`，仓库 `mind-agent`，Python 包/CLI `mindagent`，环境变量前缀 `MINDAGENT_`，默认数据目录 `~/.mindagent`。
+统一命名：产品 `WorkHub`，仓库 `workhub`，Python 包/CLI `workhub`，环境变量前缀 `WORKHUB_`，默认数据目录 `~/.workhub`。
 
 ## 2. 总体架构
 
@@ -39,7 +39,7 @@ flowchart TB
     FS[飞书私聊与确认卡片]
     WEB[管理员 Web]
 
-    subgraph MA[MindAgent 单 Worker]
+    subgraph MA[WorkHub 单 Worker]
         FC[Feishu Adapter]
         API[REST API]
         ID[Employee / Identity]
@@ -249,7 +249,7 @@ Mock OA 客户端默认配置三项工具。真实密钥和 headers 加密不在
 ### 9.1 存储模型
 
 ```text
-<MINDAGENT_DATA_DIR>/knowledge/
+<WORKHUB_DATA_DIR>/knowledge/
 ├── originals/
 │   ├── policies/
 │   │   └── leave/
@@ -292,13 +292,13 @@ sequenceDiagram
     end
 ```
 
-单并发消费者运行于 MindAgent 进程生命周期内，但不暴露为通用任务系统。移动/重命名在内容哈希不变时只更新数据库和 chunk 展示路径。删除清理原文、元数据和各 generation。
+单并发消费者运行于 WorkHub 进程生命周期内，但不暴露为通用任务系统。移动/重命名在内容哈希不变时只更新数据库和 chunk 展示路径。删除清理原文、元数据和各 generation。
 
 Agent 的搜索结果只返回有限片段和定位；需要完整依据时调用按行读取。回答制度问题时 Prompt 要求引用“文档路径 + 版本 + 行号”。
 
 ## 10. Mock OA 服务
 
-Mock OA 是仓库内独立 Python 包/服务和独立容器，不导入 MindAgent 应用模块，只共享版本化 MCP 契约和测试 fixtures。
+Mock OA 是仓库内独立 Python 包/服务和独立容器，不导入 WorkHub 应用模块，只共享版本化 MCP 契约和测试 fixtures。
 
 ```text
 Mock OA
@@ -332,7 +332,7 @@ MCP                  # 客户端、发现工具、白名单和策略
 
 ## 12. 配置、数据库与部署
 
-`app.db` 是 MindAgent 状态真相来源，至少包含：
+`app.db` 是 WorkHub 状态真相来源，至少包含：
 
 ```text
 schema_migrations, admin_users, admin_sessions,
@@ -350,11 +350,11 @@ audit_events
 Docker Compose 至少包含：
 
 ```text
-mindagent     # FastAPI、飞书长连接、Runtime、索引消费者、静态管理端
+workhub       # FastAPI、飞书长连接、Runtime、索引消费者、静态管理端
 mock-oa       # MCP 与 Demo Admin REST
 ```
 
-两者使用独立数据卷；Mock OA 只通过网络契约访问。Chroma 作为 MindAgent 本地持久索引，不新增独立向量服务。
+两者使用独立数据卷；Mock OA 只通过网络契约访问。Chroma 作为 WorkHub 本地持久索引，不新增独立向量服务。
 
 ## 13. 安全、审计与故障退化
 
