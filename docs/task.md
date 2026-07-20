@@ -14,10 +14,10 @@
 
 ## P0. 工程基线
 
-- [ ] 创建 Python 3.12 `uv` workspace、`pyproject.toml`、`uv.lock` 和 `src/workhub/`
-- [ ] 创建独立 `mock-oa-service` Python 包和启动入口
-- [ ] 配置 FastAPI、Uvicorn、Pydantic v2、aiosqlite、LangGraph、OpenAI-compatible Provider、飞书 SDK、MCP 和 RAG 依赖
-- [ ] 创建 React 18、TypeScript、Vite、Ant Design 管理台骨架
+- [x] 创建 Python 3.12 `uv` workspace、`pyproject.toml`、`uv.lock` 和 `src/workhub/`
+- [x] 创建独立 `mock-oa-service` Python 包和 `python -m mock_oa_service` 启动入口
+- [x] 配置 FastAPI、Uvicorn、Pydantic v2、aiosqlite、LangGraph、OpenAI-compatible Provider、飞书 SDK、MCP 和 RAG 依赖
+- [x] 创建 React 18、TypeScript、Vite、Ant Design 管理台骨架
 - [ ] 配置 Ruff、类型检查、pytest、Vitest、Playwright 和前端 lint/format
 - [ ] 建立 backend unit/contract/integration、Mock OA 和 frontend/e2e 测试目录
 - [ ] 创建 `.env.example`，覆盖数据目录、监听地址、管理员引导值和必要凭据占位
