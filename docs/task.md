@@ -47,21 +47,21 @@
 
 ## P2. 员工目录与飞书身份
 
-- [ ] 定义 `Employee`、`ChannelIdentity`、`ActorContext` 和 `FeishuMessage` 契约
-- [ ] 实现员工号唯一、主管引用、active/disabled 状态和 repository
-- [ ] 实现 identity `(channel, app_id, open_id)` 唯一与 unbound/bound 状态
-- [ ] 未知 `open_id` 首次消息只 upsert 待绑定 identity，不创建 Session 或 run
-- [ ] 实现管理员创建/编辑/启停员工和绑定/解绑 identity API
-- [ ] 绑定后原子创建或复用员工唯一 Session
-- [ ] 实现从当前绑定与员工快照构造只读 `ActorContext`
-- [ ] 禁止 Agent 参数覆盖 employee/open_id 等可信主体字段
-- [ ] 实现飞书官方 SDK 长连接、有限重连、健康状态和优雅关闭
-- [ ] 实现私聊文本事件转换、`event_id` 去重和非文本/群聊拒绝
-- [ ] 实现文本投递、交互卡片投递/更新和回复地址封装
-- [ ] 卡片事件在普通消息路由之前分流，不进入自由 Agent 推理
-- [ ] 编写并发首次消息、重复事件、禁用、解绑和跨身份测试
-- [ ] 验收：未知用户只得到绑定提示；绑定用户稳定复用 Session；两名员工不串用身份
-- [ ] **P2 完成**
+- [x] 定义 `Employee`、`ChannelIdentity`、`ActorContext` 和 `FeishuMessage` 契约
+- [x] 实现员工号唯一、主管引用、active/disabled 状态和 repository
+- [x] 实现 identity `(channel, app_id, open_id)` 唯一与 unbound/bound 状态
+- [x] 未知 `open_id` 首次消息只 upsert 待绑定 identity，不创建 Session 或 run
+- [x] 实现管理员创建/编辑/启停员工和绑定/解绑 identity API
+- [x] 绑定后原子创建或复用员工唯一 Session
+- [x] 实现从当前绑定与员工快照构造只读 `ActorContext`
+- [x] 禁止 Agent 参数覆盖 employee/open_id 等可信主体字段
+- [x] 实现飞书官方 SDK 长连接、有限重连、健康状态和优雅关闭
+- [x] 实现私聊文本事件转换、`event_id` 去重和非文本/群聊拒绝
+- [x] 实现文本投递、交互卡片投递/更新和回复地址封装
+- [x] 卡片事件在普通消息路由之前分流，不进入自由 Agent 推理
+- [x] 编写并发首次消息、重复事件、禁用、解绑和跨身份测试
+- [x] 验收：未知用户只得到绑定提示；绑定用户稳定复用 Session；两名员工不串用身份
+- [x] **P2 完成**
 
 ## P3. Model Runtime 与 Scroll
 

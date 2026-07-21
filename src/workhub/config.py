@@ -28,6 +28,11 @@ class WorkHubSettings(BaseSettings):
     admin_login_max_attempts: int = Field(default=5, ge=1, le=100)
     admin_cookie_secure: bool = False
     allowed_origins: str = "http://127.0.0.1:8000,http://localhost:8000"
+    feishu_app_id: str | None = None
+    feishu_app_secret: SecretStr | None = None
+    feishu_reconnect_attempts: int = Field(default=3, ge=0, le=20)
+    feishu_reconnect_delay_seconds: float = Field(default=1.0, ge=0, le=60)
+    feishu_api_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
     @field_validator("data_dir", "static_dir")
     @classmethod

@@ -17,7 +17,10 @@ from workhub.audit import AuditWriter
 from workhub.auth import AuthService
 from workhub.auth.api import CSRF_COOKIE, SESSION_COOKIE, create_auth_router
 from workhub.config import WorkHubSettings
+from workhub.employees import EmployeeRepository, IdentityRepository
+from workhub.employees.api import create_employee_router
 from workhub.errors import ApplicationError, ErrorBody, ErrorResponse
+from workhub.feishu import FeishuEventRouter, FeishuGateway, OfficialFeishuTransport
 from workhub.observability import configure_logging
 from workhub.static import SpaStaticFiles
 from workhub.storage import Database, initialize_workhub_data_layout
@@ -151,16 +154,42 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         app.state.database = database
         app.state.audit = audit
         app.state.auth_service = auth_service
+        app.state.employee_repository = EmployeeRepository(database, audit)
+        identities = IdentityRepository(database, audit)
+        app.state.identity_repository = identities
+        feishu_gateway: FeishuGateway | None = None
+        if _feishu_configured(settings):
+            assert settings.feishu_app_id is not None
+            assert settings.feishu_app_secret is not None
+            app_secret = settings.feishu_app_secret.get_secret_value()
+            transport = OfficialFeishuTransport(
+                settings.feishu_app_id,
+                app_secret,
+                timeout_seconds=settings.feishu_api_timeout_seconds,
+            )
+            router = FeishuEventRouter(identities, transport, audit)
+            feishu_gateway = FeishuGateway(
+                settings.feishu_app_id,
+                app_secret,
+                router,
+                reconnect_attempts=settings.feishu_reconnect_attempts,
+                reconnect_delay_seconds=settings.feishu_reconnect_delay_seconds,
+            )
+            await feishu_gateway.start()
+        app.state.feishu_gateway = feishu_gateway
         app.state.ready = True
         logger.info("WorkHub started")
         try:
             yield
         finally:
             app.state.ready = False
-            try:
-                await asyncio.wait_for(asyncio.sleep(0), settings.shutdown_timeout_seconds)
-            except TimeoutError:
-                logger.error("WorkHub shutdown timed out")
+            if feishu_gateway is not None:
+                try:
+                    await asyncio.wait_for(
+                        feishu_gateway.close(), settings.shutdown_timeout_seconds
+                    )
+                except TimeoutError:
+                    logger.error("Feishu shutdown timed out")
             logger.info("WorkHub stopped")
 
     app = FastAPI(title="WorkHub", version="0.1.0", lifespan=lifespan)
@@ -252,7 +281,21 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
             message="Service is not ready.",
         )
 
+    @app.get("/api/v1/feishu/status", tags=["feishu"])
+    async def feishu_status(request: Request) -> dict[str, object]:
+        gateway: FeishuGateway | None = request.app.state.feishu_gateway
+        if gateway is None:
+            return {"state": "disabled"}
+        status = gateway.status()
+        return {
+            "state": status.state,
+            "reconnect_attempt": status.reconnect_attempt,
+            "last_error": status.last_error,
+            "updated_at": status.updated_at,
+        }
+
     app.include_router(create_auth_router())
+    app.include_router(create_employee_router())
 
     if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
         app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")
@@ -260,6 +303,19 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         logger.info("Administration frontend is not built; static serving is disabled")
 
     return app
+
+
+def _feishu_configured(settings: WorkHubSettings) -> bool:
+    if settings.feishu_app_id is None or settings.feishu_app_secret is None:
+        return False
+    app_id = settings.feishu_app_id.strip()
+    secret = settings.feishu_app_secret.get_secret_value().strip()
+    return bool(
+        app_id
+        and secret
+        and not app_id.startswith("change-me")
+        and not secret.startswith("change-me")
+    )
 
 
 app = create_app()
