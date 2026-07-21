@@ -65,23 +65,23 @@
 
 ## P3. Model Runtime 与 Scroll
 
-- [ ] 定义 OpenAI-compatible Chat/Embedding Provider 接口
-- [ ] 实现模型配置脱敏 CRUD、revision、连通性测试和超时
-- [ ] 创建代码维护的办公助手系统 Prompt，不加载用户或 Persona 文件
-- [ ] 建立 LangGraph 主 Agent loop、最大迭代、总超时和工具超时
-- [ ] Runtime 只从 Feishu Adapter 接收已验证 `ActorContext` 和 `FeishuMessage`
-- [ ] 实现每员工 Session 异步执行锁和不同员工并发
-- [ ] 创建 `session_turns`、`session_events` 及递增 seq repository
-- [ ] 逐字保存用户、Agent、知识/MCP 工具、动作创建和脱敏结果事件
-- [ ] 实现 headline 结构化解析、200 字符限制和确定性回退
-- [ ] 按完整 turn 和 token 预算构建 live context，不拆 tool call/result
-- [ ] 实现 `[context compressed]` 与最近 20 个 headline 导航
-- [ ] 实现 `recall_session_history(expand/search)`，强制绑定 ActorContext
-- [ ] 搜索优先 FTS5，不可用时降级为参数化 LIKE
-- [ ] 普通申请回合在确认卡片投递后完成并释放 Session 锁
-- [ ] 编写 Prompt、turn 完整性、预算、headline、并发和跨员工 recall 测试
-- [ ] 验收：旧回合被驱逐后仍能按 headline 展开/搜索逐字原文，不能跨员工读取
-- [ ] **P3 完成**
+- [x] 定义 OpenAI-compatible Chat/Embedding Provider 接口
+- [x] 实现模型配置脱敏 CRUD、revision、连通性测试和超时
+- [x] 创建代码维护的办公助手系统 Prompt，不加载用户或 Persona 文件
+- [x] 建立 LangGraph 主 Agent loop、最大迭代、总超时和工具超时
+- [x] Runtime 只从 Feishu Adapter 接收已验证 `ActorContext` 和 `FeishuMessage`
+- [x] 实现每员工 Session 异步执行锁和不同员工并发
+- [x] 创建 `session_turns`、`session_events` 及递增 seq repository
+- [x] 逐字保存用户、Agent、知识/MCP 工具、动作创建和脱敏结果事件
+- [x] 实现 headline 结构化解析、200 字符限制和确定性回退
+- [x] 按完整 turn 和 token 预算构建 live context，不拆 tool call/result
+- [x] 实现 `[context compressed]` 与最近 20 个 headline 导航
+- [x] 实现 `recall_session_history(expand/search)`，强制绑定 ActorContext
+- [x] 搜索优先 FTS5，不可用时降级为参数化 LIKE
+- [x] 普通申请回合在确认卡片投递后完成并释放 Session 锁
+- [x] 编写 Prompt、turn 完整性、预算、headline、并发和跨员工 recall 测试
+- [x] 验收：旧回合被驱逐后仍能按 headline 展开/搜索逐字原文，不能跨员工读取
+- [x] **P3 完成**
 
 ## P4. 目录化 Knowledge / RAG
 

@@ -11,17 +11,26 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from workhub.audit import AuditWriter
 from workhub.auth import AuthService
 from workhub.auth.api import CSRF_COOKIE, SESSION_COOKIE, create_auth_router
 from workhub.config import WorkHubSettings
+from workhub.context import RecallService, ScrollBuilder, ScrollRepository
 from workhub.employees import EmployeeRepository, IdentityRepository
 from workhub.employees.api import create_employee_router
 from workhub.errors import ApplicationError, ErrorBody, ErrorResponse
 from workhub.feishu import FeishuEventRouter, FeishuGateway, OfficialFeishuTransport
 from workhub.observability import configure_logging
+from workhub.providers import (
+    ModelSettingsRepository,
+    OpenAICompatibleChatProvider,
+    create_provider_router,
+)
+from workhub.providers.openai import ChatProvider
+from workhub.runtime import AgentRuntime, CoreRuntimeToolProvider
 from workhub.static import SpaStaticFiles
 from workhub.storage import Database, initialize_workhub_data_layout
 
@@ -157,6 +166,23 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         app.state.employee_repository = EmployeeRepository(database, audit)
         identities = IdentityRepository(database, audit)
         app.state.identity_repository = identities
+        model_settings = ModelSettingsRepository(database, audit)
+        app.state.model_settings_repository = model_settings
+        await _bootstrap_provider_settings(model_settings, settings)
+        scroll_repository = ScrollRepository(database)
+        recall_service = RecallService(database)
+        app.state.scroll_repository = scroll_repository
+        app.state.recall_service = recall_service
+
+        async def chat_provider_factory() -> ChatProvider:
+            stored = await model_settings.get("chat")
+            return OpenAICompatibleChatProvider(
+                base_url=stored.public.base_url,
+                api_key=stored.api_key,
+                model=stored.public.model,
+                timeout_seconds=settings.agent_timeout_seconds,
+            )
+
         feishu_gateway: FeishuGateway | None = None
         if _feishu_configured(settings):
             assert settings.feishu_app_id is not None
@@ -167,7 +193,19 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 app_secret,
                 timeout_seconds=settings.feishu_api_timeout_seconds,
             )
-            router = FeishuEventRouter(identities, transport, audit)
+            runtime = AgentRuntime(
+                scroll_repository,
+                ScrollBuilder(scroll_repository),
+                chat_provider_factory,
+                CoreRuntimeToolProvider(recall_service),
+                transport,
+                max_iterations=settings.agent_max_iterations,
+                total_timeout_seconds=settings.agent_timeout_seconds,
+                tool_timeout_seconds=settings.agent_tool_timeout_seconds,
+                context_token_budget=settings.agent_context_token_budget,
+            )
+            app.state.agent_runtime = runtime
+            router = FeishuEventRouter(identities, transport, audit, message_handler=runtime)
             feishu_gateway = FeishuGateway(
                 settings.feishu_app_id,
                 app_secret,
@@ -296,6 +334,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
 
     app.include_router(create_auth_router())
     app.include_router(create_employee_router())
+    app.include_router(create_provider_router())
 
     if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
         app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")
@@ -314,6 +353,50 @@ def _feishu_configured(settings: WorkHubSettings) -> bool:
         app_id
         and secret
         and not app_id.startswith("change-me")
+        and not secret.startswith("change-me")
+    )
+
+
+async def _bootstrap_provider_settings(
+    repository: ModelSettingsRepository, settings: WorkHubSettings
+) -> None:
+    if _initial_provider_configured(
+        settings.chat_base_url, settings.chat_api_key, settings.chat_model
+    ):
+        assert settings.chat_base_url is not None
+        assert settings.chat_api_key is not None
+        assert settings.chat_model is not None
+        await repository.bootstrap(
+            "chat",
+            base_url=settings.chat_base_url,
+            api_key=settings.chat_api_key.get_secret_value(),
+            model=settings.chat_model,
+        )
+    if _initial_provider_configured(
+        settings.embedding_base_url, settings.embedding_api_key, settings.embedding_model
+    ):
+        assert settings.embedding_base_url is not None
+        assert settings.embedding_api_key is not None
+        assert settings.embedding_model is not None
+        await repository.bootstrap(
+            "embedding",
+            base_url=settings.embedding_base_url,
+            api_key=settings.embedding_api_key.get_secret_value(),
+            model=settings.embedding_model,
+        )
+
+
+def _initial_provider_configured(
+    base_url: str | None, api_key: SecretStr | None, model: str | None
+) -> bool:
+    if base_url is None or api_key is None or model is None:
+        return False
+    secret = api_key.get_secret_value()
+    return bool(
+        base_url.strip()
+        and model.strip()
+        and secret.strip()
+        and not model.startswith("change-me")
         and not secret.startswith("change-me")
     )
 
