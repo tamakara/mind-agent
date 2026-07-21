@@ -31,19 +31,19 @@
 
 ## P1. 存储、认证与审计基础
 
-- [ ] 定义 UUID4、UTC RFC 3339、分页、revision 和结构化错误公共类型
-- [ ] 实现 `app.db` schema 迁移和 repository transaction
-- [ ] 所有 SQLite 连接启用 WAL、foreign keys 和 busy timeout
-- [ ] 建立员工、身份、Session、Scroll、事件去重、待确认、配置、知识和审计基础表
-- [ ] 为隔离读取建立 `(employee_id, session_id, seq)` 等复合索引和唯一约束
-- [ ] 实现同目录临时文件、flush、fsync 和原子替换工具
-- [ ] 实现安全相对路径解析，拒绝绝对路径、`..` 和符号链接逃逸
-- [ ] 实现管理员首次初始化、密码哈希、登录、登出、Session 过期和登录限速
-- [ ] 实现管理员认证中间件、HttpOnly/SameSite cookie、CSRF 与同源保护
-- [ ] 实现审计写入器和按字段策略脱敏，不保存凭据、action token 或完整敏感参数
-- [ ] 编写 schema 重复初始化、约束、并发写、原子文件、认证和脱敏测试
-- [ ] 验收：失败事务不留下部分状态，未认证请求不能访问管理 API
-- [ ] **P1 完成**
+- [x] 定义 UUID4、UTC RFC 3339、分页、revision 和结构化错误公共类型
+- [x] 实现 `app.db` schema 迁移和 repository transaction
+- [x] 所有 SQLite 连接启用 WAL、foreign keys 和 busy timeout
+- [x] 建立员工、身份、Session、Scroll、事件去重、待确认、配置、知识和审计基础表
+- [x] 为隔离读取建立 `(employee_id, session_id, seq)` 等复合索引和唯一约束
+- [x] 实现同目录临时文件、flush、fsync 和原子替换工具
+- [x] 实现安全相对路径解析，拒绝绝对路径、`..` 和符号链接逃逸
+- [x] 实现管理员首次初始化、密码哈希、登录、登出、Session 过期和登录限速
+- [x] 实现管理员认证中间件、HttpOnly/SameSite cookie、CSRF 与同源保护
+- [x] 实现审计写入器和按字段策略脱敏，不保存凭据、action token 或完整敏感参数
+- [x] 编写 schema 重复初始化、约束、并发写、原子文件、认证和脱敏测试
+- [x] 验收：失败事务不留下部分状态，未认证请求不能访问管理 API
+- [x] **P1 完成**
 
 ## P2. 员工目录与飞书身份
 

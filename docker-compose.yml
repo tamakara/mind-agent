@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
     environment:
       WORKHUB_DATA_DIR: /data/workhub
       WORKHUB_STATIC_DIR: /app/frontend-dist
@@ -23,6 +26,9 @@ services:
     build:
       context: .
       dockerfile: mock-oa-service/Dockerfile
+    env_file:
+      - path: .env
+        required: false
     environment:
       MOCK_OA_DATA_DIR: /data/mock-oa
       MOCK_OA_HOST: 0.0.0.0

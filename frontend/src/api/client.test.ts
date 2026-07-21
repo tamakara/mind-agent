@@ -46,4 +46,15 @@ describe("ApiClient", () => {
       requestId: "request-42",
     });
   });
+
+  it("reads the CSRF cookie only when sending a write request", async () => {
+    document.cookie = "workhub_csrf=csrf-token; path=/";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new ApiClient().request("auth/logout", { method: "POST" });
+
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(options.headers).get("X-CSRF-Token")).toBe("csrf-token");
+  });
 });

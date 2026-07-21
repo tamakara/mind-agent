@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import re
+import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -11,14 +13,19 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from workhub.audit import AuditWriter
+from workhub.auth import AuthService
+from workhub.auth.api import CSRF_COOKIE, SESSION_COOKIE, create_auth_router
 from workhub.config import WorkHubSettings
 from workhub.errors import ApplicationError, ErrorBody, ErrorResponse
 from workhub.observability import configure_logging
 from workhub.static import SpaStaticFiles
-from workhub.storage import initialize_workhub_data_layout
+from workhub.storage import Database, initialize_workhub_data_layout
 
 logger = logging.getLogger(__name__)
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+PUBLIC_API_PATHS = frozenset({"/api/v1/auth/bootstrap-status", "/api/v1/auth/login"})
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 def _request_id(request: Request) -> str:
@@ -45,6 +52,59 @@ def _error_response(
     )
 
 
+def _origin_allowed(request: Request, settings: WorkHubSettings) -> bool:
+    origin = request.headers.get("Origin")
+    if not origin:
+        return False
+    parsed = urlsplit(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    normalized = f"{parsed.scheme}://{parsed.netloc}"
+    request_origin = f"{request.url.scheme}://{request.url.netloc}"
+    configured = {item.strip().rstrip("/") for item in settings.allowed_origins.split(",")}
+    return normalized == request_origin or normalized in configured
+
+
+async def _admin_guard(request: Request, settings: WorkHubSettings) -> JSONResponse | None:
+    if request.url.path != "/api/v1" and not request.url.path.startswith("/api/v1/"):
+        return None
+    if request.method in UNSAFE_METHODS and not _origin_allowed(request, settings):
+        return _error_response(
+            request,
+            status_code=403,
+            code="origin_forbidden",
+            message="Request origin is not allowed.",
+        )
+    if request.url.path in PUBLIC_API_PATHS:
+        return None
+    service: AuthService = request.app.state.auth_service
+    principal = await service.authenticate(request.cookies.get(SESSION_COOKIE))
+    if principal is None:
+        return _error_response(
+            request,
+            status_code=401,
+            code="authentication_required",
+            message="Administrator authentication is required.",
+        )
+    request.state.admin = principal
+    if request.method in UNSAFE_METHODS:
+        cookie_token = request.cookies.get(CSRF_COOKIE)
+        header_token = request.headers.get("X-CSRF-Token")
+        if (
+            not cookie_token
+            or not header_token
+            or not secrets.compare_digest(cookie_token, header_token)
+            or not service.verify_csrf(principal, header_token)
+        ):
+            return _error_response(
+                request,
+                status_code=403,
+                code="csrf_failed",
+                message="CSRF validation failed.",
+            )
+    return None
+
+
 def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
     settings = settings or WorkHubSettings()
 
@@ -61,6 +121,36 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
             logger.exception("WorkHub startup timed out")
             raise RuntimeError("WorkHub startup timed out") from None
         app.state.data_layout = layout
+        database = Database(
+            layout.database,
+            busy_timeout_ms=settings.sqlite_busy_timeout_ms,
+        )
+        await asyncio.wait_for(database.migrate(), timeout=settings.startup_timeout_seconds)
+        audit = AuditWriter(database)
+        auth_service = AuthService(
+            database,
+            audit,
+            session_ttl_seconds=settings.admin_session_ttl_seconds,
+            login_window_seconds=settings.admin_login_window_seconds,
+            login_max_attempts=settings.admin_login_max_attempts,
+            session_secret=(
+                settings.session_secret.get_secret_value()
+                if settings.session_secret is not None
+                else None
+            ),
+        )
+        bootstrap_password = (
+            settings.bootstrap_admin_password.get_secret_value()
+            if settings.bootstrap_admin_password is not None
+            else None
+        )
+        await asyncio.wait_for(
+            auth_service.bootstrap(settings.bootstrap_admin_username, bootstrap_password),
+            timeout=settings.startup_timeout_seconds,
+        )
+        app.state.database = database
+        app.state.audit = audit
+        app.state.auth_service = auth_service
         app.state.ready = True
         logger.info("WorkHub started")
         try:
@@ -75,6 +165,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
 
     app = FastAPI(title="WorkHub", version="0.1.0", lifespan=lifespan)
     app.state.ready = False
+    app.state.settings = settings
 
     @app.middleware("http")
     async def request_context(
@@ -86,7 +177,8 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         )
         started = time.perf_counter()
         try:
-            response = await call_next(request)
+            blocked = await _admin_guard(request, settings)
+            response = blocked if blocked is not None else await call_next(request)
         except Exception:
             logger.exception(
                 "Unhandled request error",
@@ -159,6 +251,8 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
             code="not_ready",
             message="Service is not ready.",
         )
+
+    app.include_router(create_auth_router())
 
     if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
         app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")

@@ -60,9 +60,9 @@ def test_workhub_serves_frontend_and_preserves_api_boundary(tmp_path: Path) -> N
         assert frontend_route.text == root.text
         assert missing_asset.status_code == 404
         assert missing_asset.headers["content-type"].startswith("application/json")
-        assert missing_api.status_code == 404
+        assert missing_api.status_code == 401
         assert missing_api.headers["content-type"].startswith("application/json")
-        assert missing_api.json()["error"]["code"] == "http_error"
+        assert missing_api.json()["error"]["code"] == "authentication_required"
 
 
 def test_mock_oa_health_and_readiness(tmp_path: Path) -> None:

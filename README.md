@@ -30,6 +30,8 @@ WorkHub 是面向单个企业部署的对话式企业服务入口。员工通过
 WorkHub 镜像使用多阶段构建生成 React 管理台，并由 FastAPI 在同一域名下提供静态页面和 API。Mock OA 仍作为独立服务运行：
 
 ```powershell
+Copy-Item .env.example .env
+# 启动前修改 .env 中的管理员密码和其他 change-me 值
 docker compose build
 docker compose up -d
 docker compose ps
@@ -42,6 +44,8 @@ docker compose ps
 - Mock OA 就绪检查：<http://127.0.0.1:8001/readyz>
 
 前端本地开发使用 `npm run dev`，Vite 会将 `/api`、`/healthz` 和 `/readyz` 代理到本机 `8000` 端口。生产环境不需要单独部署前端容器。
+
+首次启动时，WorkHub 使用 `WORKHUB_BOOTSTRAP_ADMIN_USERNAME` 和 `WORKHUB_BOOTSTRAP_ADMIN_PASSWORD` 原子创建唯一初始管理员；数据库已有管理员后不会再次引导。管理 API 默认要求持久 Session、同源 Origin 和 CSRF 请求头。通过 HTTPS 部署时必须设置 `WORKHUB_ADMIN_COOKIE_SECURE=true`。
 
 ## 项目文档
 
