@@ -47,6 +47,27 @@ docker compose ps
 
 首次启动时，WorkHub 使用 `WORKHUB_BOOTSTRAP_ADMIN_USERNAME` 和 `WORKHUB_BOOTSTRAP_ADMIN_PASSWORD` 原子创建唯一初始管理员；数据库已有管理员后不会再次引导。管理 API 默认要求持久 Session、同源 Origin 和 CSRF 请求头。通过 HTTPS 部署时必须设置 `WORKHUB_ADMIN_COOKIE_SECURE=true`。
 
+## Mock OA 演示
+
+Mock OA 首次启动会创建 `E10001` 演示员工和当年 10 天年假余额。WorkHub 在 MCP URL 与两端共享密钥均已配置后，引导 `mock_oa` 客户端并发现以下工具：
+
+- `query_leave_balance`：查询当前员工余额；
+- `submit_leave_request`：使用 WorkHub 生成的幂等键提交申请；
+- `query_leave_request_status`：只查询当前员工自己的申请。
+
+新发现工具遵守默认 deny。管理员应在 MCP 页面将余额和状态查询设为 `allow`，将申请提交设为 `confirm`，并加入模型白名单。
+
+申请提交后固定进入 `pending_approval`。本地演示人员可使用独立管理令牌更新状态：
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:MOCK_OA_ADMIN_TOKEN" }
+$body = @{ status = "approved" } | ConvertTo-Json
+Invoke-RestMethod -Method Patch -Headers $headers -ContentType "application/json" `
+  -Body $body "http://127.0.0.1:8001/api/v1/leave-requests/<request_id>/status"
+```
+
+该管理接口不是 MCP 工具，WorkHub 和 Agent 均不能通过工具改变业务审批状态。示例制度文档位于 `context/demo/员工请假制度.md`，可在管理台知识库中导入。
+
 ## 项目文档
 
 - [业务提案](docs/proposal.md)：产品定位、用户链路和首版范围；

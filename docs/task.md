@@ -132,20 +132,20 @@
 
 ## P6. 独立 Mock OA 服务
 
-- [ ] 初始化 `mock_oa.db` 迁移、WAL、员工余额、请假申请和幂等表
-- [ ] 创建与 WorkHub 分离的 Mock OA 配置、健康检查和结构化错误
-- [ ] 实现可信员工主体传输约定并拒绝缺失或非法主体
-- [ ] 实现 `query_leave_balance` MCP 工具
-- [ ] 实现 `submit_leave_request` 的日期、工作日、余额和重复申请校验
-- [ ] 在同一事务中按 `(employee_id, idempotency_key)` 创建或返回原申请
-- [ ] 新申请固定进入 `pending_approval` 并返回业务单号
-- [ ] 实现 `query_leave_request_status`，只返回当前员工自己的申请
-- [ ] 实现受管理 token 保护的 Demo Admin REST 状态更新，仅允许 approved/rejected
-- [ ] 确保状态更新接口不注册为 MCP 工具、不进入 Agent Prompt
-- [ ] 提供本地演示种子员工、余额和示例制度文档
-- [ ] 编写余额隔离、重复日期、余额不足、幂等、越权和状态更新测试
-- [ ] 验收：超时重试只创建一张申请；WorkHub 只能查询而不能执行业务审批
-- [ ] **P6 完成**
+- [x] 初始化 `mock_oa.db` 迁移、WAL、员工余额、请假申请和幂等表
+- [x] 创建与 WorkHub 分离的 Mock OA 配置、健康检查和结构化错误
+- [x] 实现可信员工主体传输约定并拒绝缺失或非法主体
+- [x] 实现 `query_leave_balance` MCP 工具
+- [x] 实现 `submit_leave_request` 的日期、工作日、余额和重复申请校验
+- [x] 在同一事务中按 `(employee_id, idempotency_key)` 创建或返回原申请
+- [x] 新申请固定进入 `pending_approval` 并返回业务单号
+- [x] 实现 `query_leave_request_status`，只返回当前员工自己的申请
+- [x] 实现受管理 token 保护的 Demo Admin REST 状态更新，仅允许 approved/rejected
+- [x] 确保状态更新接口不注册为 MCP 工具、不进入 Agent Prompt
+- [x] 提供本地演示种子员工、余额和示例制度文档
+- [x] 编写余额隔离、重复日期、余额不足、幂等、越权和状态更新测试
+- [x] 验收：超时重试只创建一张申请；WorkHub 只能查询而不能执行业务审批
+- [x] **P6 完成**
 
 ## P7. 最小管理端与端到端验收
 

@@ -11,10 +11,14 @@ services:
       WORKHUB_STATIC_DIR: /app/frontend-dist
       WORKHUB_HOST: 0.0.0.0
       WORKHUB_PORT: 8000
+      WORKHUB_MOCK_OA_MCP_URL: http://mock-oa:8001/mcp
     ports:
       - "8000:8000"
     volumes:
       - workhub-data:/data/workhub
+    depends_on:
+      mock-oa:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/readyz', timeout=2); u.urlopen('http://127.0.0.1:8000/', timeout=2)"]
       interval: 10s

@@ -190,6 +190,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         app.state.scroll_repository = scroll_repository
         app.state.recall_service = recall_service
         mcp_repository = McpRepository(database, audit)
+        await _bootstrap_mock_oa_client(mcp_repository, settings)
         mcp_manager = MCPManager(mcp_repository, timeout_seconds=settings.mcp_timeout_seconds)
         pending_actions = PendingActionRepository(
             database, audit, ttl_seconds=settings.pending_action_ttl_seconds
@@ -490,6 +491,26 @@ def _initial_provider_configured(
         and secret.strip()
         and not model.startswith("change-me")
         and not secret.startswith("change-me")
+    )
+
+
+async def _bootstrap_mock_oa_client(repository: McpRepository, settings: WorkHubSettings) -> None:
+    if settings.mock_oa_mcp_url is None or settings.mock_oa_shared_secret is None:
+        return
+    url = settings.mock_oa_mcp_url.strip()
+    secret = settings.mock_oa_shared_secret.get_secret_value().strip()
+    if (
+        not url
+        or not secret
+        or not url.startswith(("http://", "https://"))
+        or secret.startswith("change-me")
+    ):
+        return
+    await repository.bootstrap_client(
+        client_key="mock_oa",
+        name="Mock OA",
+        url=url,
+        headers={"X-WorkHub-Shared-Secret": secret},
     )
 
 

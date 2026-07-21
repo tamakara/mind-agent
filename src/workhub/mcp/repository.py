@@ -167,6 +167,37 @@ class McpRepository:
             )
         return _client(row)
 
+    async def bootstrap_client(
+        self,
+        *,
+        client_key: str,
+        name: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> None:
+        if not CLIENT_KEY.fullmatch(client_key):
+            raise ValueError("Invalid bootstrap MCP client key")
+        timestamp = format_rfc3339(utc_now())
+        async with self.database.transaction(write=True) as connection:
+            await connection.execute(
+                """
+                INSERT INTO mcp_clients(
+                    id, client_key, name, url, headers_json, enabled,
+                    revision, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)
+                ON CONFLICT(client_key) DO NOTHING
+                """,
+                (
+                    str(new_uuid4()),
+                    client_key,
+                    name,
+                    url,
+                    _headers_json(headers),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
     async def delete_client(
         self, client_id: UUID, *, expected_revision: int, actor_id: str, request_id: str
     ) -> None:

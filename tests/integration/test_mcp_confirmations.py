@@ -186,6 +186,29 @@ async def test_tool_discovery_defaults_deny_strips_subject_and_hides_headers(
     assert tools[0].input_schema["required"] == ["year"]
 
 
+async def test_mock_oa_client_bootstrap_is_idempotent_and_keeps_secret_private(
+    tmp_path: Path,
+) -> None:
+    database = Database(tmp_path / "app.db")
+    await database.migrate()
+    repository = McpRepository(database, AuditWriter(database))
+    for _ in range(2):
+        await repository.bootstrap_client(
+            client_key="mock_oa",
+            name="Mock OA",
+            url="http://mock-oa:8001/mcp",
+            headers={"X-WorkHub-Shared-Secret": "shared-secret"},
+        )
+
+    clients = await repository.list_clients()
+    stored = await repository.get_client(clients[0].client_id)
+    assert len(clients) == 1
+    assert clients[0].enabled is True
+    assert clients[0].headers_configured is True
+    assert "shared-secret" not in clients[0].model_dump_json()
+    assert stored.headers == {"X-WorkHub-Shared-Secret": "shared-secret"}
+
+
 async def test_deny_rejects_before_manager_connects(tmp_path: Path) -> None:
     database = Database(tmp_path / "app.db")
     await database.migrate()

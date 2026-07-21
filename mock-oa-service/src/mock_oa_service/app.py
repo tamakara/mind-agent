@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import re
+import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -13,6 +15,10 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from mock_oa_service.config import MockOASettings
+from mock_oa_service.database import Database
+from mock_oa_service.domain import LeaveRequest, MockOAError
+from mock_oa_service.mcp_server import create_mcp_server
+from mock_oa_service.repository import LeaveRepository
 from mock_oa_service.storage import initialize_mock_oa_data_layout
 
 logger = logging.getLogger(__name__)
@@ -28,6 +34,10 @@ class ErrorBody(BaseModel):
 class ErrorResponse(BaseModel):
     error: ErrorBody
     request_id: str
+
+
+class LeaveStatusUpdate(BaseModel):
+    status: Literal["approved", "rejected"]
 
 
 def _error(
@@ -49,23 +59,48 @@ def _error(
 
 def create_app(settings: MockOASettings | None = None) -> FastAPI:
     settings = settings or MockOASettings()
+    repository_holder: list[LeaveRepository] = []
+
+    def current_repository() -> LeaveRepository:
+        if not repository_holder:
+            raise RuntimeError("Mock OA repository is not ready")
+        return repository_holder[0]
+
+    mcp_server = create_mcp_server(current_repository)
+    mcp_app = mcp_server.streamable_http_app()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.ready = False
         try:
-            app.state.data_layout = await asyncio.wait_for(
+            layout = await asyncio.wait_for(
                 asyncio.to_thread(initialize_mock_oa_data_layout, settings.data_dir),
                 timeout=settings.startup_timeout_seconds,
             )
         except TimeoutError:
             raise RuntimeError("Mock OA startup timed out") from None
-        app.state.ready = True
-        try:
-            yield
-        finally:
-            app.state.ready = False
-            await asyncio.wait_for(asyncio.sleep(0), settings.shutdown_timeout_seconds)
+        app.state.data_layout = layout
+        database = Database(layout.database, busy_timeout_ms=settings.sqlite_busy_timeout_ms)
+        await asyncio.wait_for(database.migrate(), settings.startup_timeout_seconds)
+        repository = LeaveRepository(
+            database,
+            default_entitlement_days=settings.default_annual_balance_days,
+        )
+        await repository.seed_employee(
+            employee_id=settings.demo_employee_id,
+            employee_no=settings.demo_employee_no,
+            display_name=settings.demo_employee_name,
+        )
+        repository_holder.append(repository)
+        app.state.database = database
+        app.state.leave_repository = repository
+        async with mcp_server.session_manager.run():
+            app.state.ready = True
+            try:
+                yield
+            finally:
+                app.state.ready = False
+                repository_holder.clear()
 
     app = FastAPI(title="Mock OA", version="0.1.0", lifespan=lifespan)
     app.state.ready = False
@@ -79,6 +114,18 @@ def create_app(settings: MockOASettings | None = None) -> FastAPI:
             incoming if REQUEST_ID_PATTERN.fullmatch(incoming) else str(uuid4())
         )
         started = time.perf_counter()
+        if request.url.path.rstrip("/") == "/mcp":
+            configured = _secret(settings.workhub_shared_secret)
+            supplied = request.headers.get("X-WorkHub-Shared-Secret", "")
+            if configured is None:
+                return _error(
+                    request,
+                    503,
+                    "mcp_auth_not_configured",
+                    "Mock OA MCP authentication is not configured.",
+                )
+            if not supplied or not secrets.compare_digest(supplied, configured):
+                return _error(request, 401, "mcp_auth_failed", "MCP authentication failed.")
         try:
             response = await call_next(request)
         except Exception:
@@ -107,6 +154,10 @@ def create_app(settings: MockOASettings | None = None) -> FastAPI:
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return _error(request, exc.status_code, "http_error", str(exc.detail))
 
+    @app.exception_handler(MockOAError)
+    async def mock_oa_error(request: Request, exc: MockOAError) -> JSONResponse:
+        return _error(request, exc.status_code, exc.code, exc.message)
+
     @app.get("/healthz", tags=["system"])
     async def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -117,7 +168,41 @@ def create_app(settings: MockOASettings | None = None) -> FastAPI:
             return {"status": "ready"}
         return _error(request, 503, "not_ready", "Service is not ready.")
 
+    @app.patch(
+        "/api/v1/leave-requests/{request_id}/status",
+        response_model=LeaveRequest,
+        tags=["demo-admin"],
+    )
+    async def update_leave_status(
+        request_id: str, payload: LeaveStatusUpdate, request: Request
+    ) -> LeaveRequest | JSONResponse:
+        configured = _secret(settings.admin_token)
+        authorization = request.headers.get("Authorization", "")
+        supplied = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if configured is None:
+            return _error(
+                request,
+                503,
+                "admin_auth_not_configured",
+                "Demo admin authentication is not configured.",
+            )
+        if not supplied or not secrets.compare_digest(supplied, configured):
+            return _error(request, 401, "admin_auth_failed", "Admin authentication failed.")
+        return await current_repository().update_status(request_id, payload.status)
+
+    app.mount("/", mcp_app, name="mcp")
+
     return app
+
+
+def _secret(value: object) -> str | None:
+    getter = getattr(value, "get_secret_value", None)
+    if not callable(getter):
+        return None
+    secret = str(getter()).strip()
+    if not secret or secret.startswith("change-me"):
+        return None
+    return secret
 
 
 app = create_app()
