@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     environment:
       WORKHUB_DATA_DIR: /data/workhub
+      WORKHUB_STATIC_DIR: /app/frontend-dist
       WORKHUB_HOST: 0.0.0.0
       WORKHUB_PORT: 8000
     ports:
@@ -12,7 +13,7 @@ services:
     volumes:
       - workhub-data:/data/workhub
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/readyz', timeout=2); u.urlopen('http://127.0.0.1:8000/', timeout=2)"]
       interval: 10s
       timeout: 3s
       retries: 5

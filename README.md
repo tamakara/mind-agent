@@ -25,6 +25,24 @@ WorkHub 是面向单个企业部署的对话式企业服务入口。员工通过
 
 首版采用单企业、单飞书自建应用、单 WorkHub Worker 和 SQLite WAL。Chat 与 Embedding 均使用 OpenAI-compatible Provider。
 
+## 本地一体化部署
+
+WorkHub 镜像使用多阶段构建生成 React 管理台，并由 FastAPI 在同一域名下提供静态页面和 API。Mock OA 仍作为独立服务运行：
+
+```powershell
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+启动后可访问：
+
+- WorkHub 管理台：<http://127.0.0.1:8000/>
+- WorkHub 就绪检查：<http://127.0.0.1:8000/readyz>
+- Mock OA 就绪检查：<http://127.0.0.1:8001/readyz>
+
+前端本地开发使用 `npm run dev`，Vite 会将 `/api`、`/healthz` 和 `/readyz` 代理到本机 `8000` 端口。生产环境不需要单独部署前端容器。
+
 ## 项目文档
 
 - [业务提案](docs/proposal.md)：产品定位、用户链路和首版范围；

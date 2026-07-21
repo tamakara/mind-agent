@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from workhub.config import WorkHubSettings
 from workhub.errors import ApplicationError, ErrorBody, ErrorResponse
 from workhub.observability import configure_logging
+from workhub.static import SpaStaticFiles
 from workhub.storage import initialize_workhub_data_layout
 
 logger = logging.getLogger(__name__)
@@ -158,6 +159,11 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
             code="not_ready",
             message="Service is not ready.",
         )
+
+    if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
+        app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")
+    else:
+        logger.info("Administration frontend is not built; static serving is disabled")
 
     return app
 

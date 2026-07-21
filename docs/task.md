@@ -25,6 +25,7 @@
 - [x] 建立结构化错误、request ID、日志脱敏和统一 REST 错误响应
 - [x] 实现 `/healthz`、`/readyz` 和有限超时的启动/关闭生命周期
 - [x] 创建双服务 Docker Compose 和独立持久卷
+- [x] 将 React 管理端构建并由 WorkHub 同源托管
 - [x] 验收：全新环境可安装、启动 WorkHub/Mock OA，并通过基础检查
 - [x] **P0 完成**
 

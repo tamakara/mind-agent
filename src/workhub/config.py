@@ -13,13 +13,14 @@ class WorkHubSettings(BaseSettings):
     )
 
     data_dir: Path = Path("~/.workhub")
+    static_dir: Path = Path("frontend/dist")
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
     startup_timeout_seconds: float = Field(default=15.0, gt=0, le=300)
     shutdown_timeout_seconds: float = Field(default=10.0, gt=0, le=300)
     log_level: str = "INFO"
 
-    @field_validator("data_dir")
+    @field_validator("data_dir", "static_dir")
     @classmethod
-    def expand_data_dir(cls, value: Path) -> Path:
+    def expand_path(cls, value: Path) -> Path:
         return value.expanduser()

@@ -6,5 +6,10 @@
 .uv-cache
 .venv
 frontend/node_modules
+frontend/dist
+frontend/*.log
+frontend/*.tsbuildinfo
+frontend/playwright-report
+frontend/test-results
 **/__pycache__
 *.pyc
