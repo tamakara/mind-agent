@@ -65,7 +65,7 @@ body {
 }
 
 .app-content {
-  width: min(100%, 1040px);
+  width: min(100%, 1280px);
   padding: 32px 36px;
 }
 
@@ -103,6 +103,129 @@ body {
   gap: 20px;
 }
 
+.knowledge-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.knowledge-heading h2.ant-typography {
+  margin-bottom: 2px;
+}
+
+.knowledge-alert {
+  margin-bottom: 16px;
+}
+
+.knowledge-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  min-height: 620px;
+  overflow: hidden;
+  border: 1px solid #d8dedb;
+  background: #ffffff;
+}
+
+.knowledge-tree-panel {
+  min-width: 0;
+  border-right: 1px solid #d8dedb;
+  background: #fafbfa;
+}
+
+.knowledge-editor-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.panel-toolbar {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid #e1e6e3;
+  gap: 12px;
+}
+
+.tree-scroll {
+  height: 566px;
+  overflow: auto;
+  padding: 10px 8px;
+}
+
+.tree-scroll .ant-spin,
+.tree-scroll .ant-empty {
+  display: block;
+  margin-top: 72px;
+  text-align: center;
+}
+
+.editor-toolbar {
+  align-items: flex-start;
+}
+
+.document-identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.document-identity .ant-typography {
+  max-width: 520px;
+}
+
+.index-error-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 6px 14px;
+  border-bottom: 1px solid #ffd7d4;
+  background: #fff2f0;
+}
+
+.knowledge-editor.ant-input {
+  min-height: 510px;
+  flex: 1;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  padding: 18px 20px;
+  box-shadow: none;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.knowledge-editor.ant-input:focus {
+  box-shadow: inset 0 0 0 1px #176b4d;
+}
+
+.editor-footer {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px 9px 20px;
+  border-top: 1px solid #e1e6e3;
+}
+
+.directory-selection {
+  display: flex;
+  min-height: 540px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 28px;
+}
+
+.modal-fields {
+  width: 100%;
+}
+
 @media (max-width: 767px) {
   .ant-layout-sider-zero-width-trigger {
     top: 12px !important;
@@ -119,5 +242,27 @@ body {
   .status-row {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .knowledge-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .knowledge-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-tree-panel {
+    border-right: 0;
+    border-bottom: 1px solid #d8dedb;
+  }
+
+  .tree-scroll {
+    height: 240px;
+  }
+
+  .knowledge-editor.ant-input {
+    min-height: 420px;
   }
 }

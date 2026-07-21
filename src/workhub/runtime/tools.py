@@ -17,6 +17,20 @@ class RuntimeToolProvider(Protocol):
     async def snapshot(self, actor: ActorContext, session_id: UUID) -> tuple[RuntimeTool, ...]: ...
 
 
+class CompositeRuntimeToolProvider:
+    def __init__(self, *providers: RuntimeToolProvider) -> None:
+        self.providers = providers
+
+    async def snapshot(self, actor: ActorContext, session_id: UUID) -> tuple[RuntimeTool, ...]:
+        tools: list[RuntimeTool] = []
+        for provider in self.providers:
+            tools.extend(await provider.snapshot(actor, session_id))
+        names = [tool.definition.name for tool in tools]
+        if len(names) != len(set(names)):
+            raise ValueError("Runtime tool names must be unique")
+        return tuple(tools)
+
+
 @dataclass(frozen=True, slots=True)
 class RecallRuntimeTool:
     recall: RecallService

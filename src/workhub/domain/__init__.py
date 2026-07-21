@@ -9,6 +9,12 @@ from workhub.domain.common import (
 )
 from workhub.domain.context import ScrollWindow, SessionEvent, SessionTurn
 from workhub.domain.employees import ActorContext, ChannelIdentity, Employee, IdentityResolution
+from workhub.domain.knowledge import (
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeNode,
+    KnowledgeSearchResult,
+)
 from workhub.domain.messages import ChannelAddress, FeishuMessage, MessageSender
 from workhub.domain.providers import (
     ChatMessage,
@@ -27,6 +33,10 @@ __all__ = [
     "Employee",
     "FeishuMessage",
     "IdentityResolution",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
+    "KnowledgeNode",
+    "KnowledgeSearchResult",
     "MessageSender",
     "ModelSetting",
     "Page",

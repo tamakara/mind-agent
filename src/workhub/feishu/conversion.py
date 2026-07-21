@@ -46,9 +46,7 @@ def convert_message_event(event: Any) -> MessageConversion:
     text = content.get("text") if isinstance(content, dict) else None
     if not isinstance(text, str) or not text.strip():
         return MessageConversion("empty", app_id, event_id, message_id)
-    created_ms: Any = getattr(message, "create_time", None) or getattr(
-        header, "create_time", None
-    )
+    created_ms: Any = getattr(message, "create_time", None) or getattr(header, "create_time", None)
     if not isinstance(created_ms, (str, int, float)):
         return MessageConversion("invalid", app_id, event_id, message_id)
     try:

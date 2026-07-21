@@ -89,14 +89,10 @@ class FeishuEventRouter:
             await self.transport.reply_text(message.message_id, "当前员工账号已停用。")
             return "rejected"
         assert resolution.actor is not None and resolution.session_id is not None
-        await self.message_handler.handle_message(
-            message, resolution.actor, resolution.session_id
-        )
+        await self.message_handler.handle_message(message, resolution.actor, resolution.session_id)
         return "processed"
 
-    async def handle_card_event(
-        self, event: Any
-    ) -> Literal["processed", "duplicate", "rejected"]:
+    async def handle_card_event(self, event: Any) -> Literal["processed", "duplicate", "rejected"]:
         action = convert_card_event(event)
         if action is None:
             return "rejected"

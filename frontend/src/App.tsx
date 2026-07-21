@@ -7,6 +7,9 @@ import {
   TeamOutlined,
 } from "@ant-design/icons";
 import { Badge, Layout, Menu, Space, Typography } from "antd";
+import { useState } from "react";
+
+import { KnowledgePage } from "./knowledge/KnowledgePage";
 
 const { Header, Content, Sider } = Layout;
 const { Paragraph, Text, Title } = Typography;
@@ -27,6 +30,8 @@ const serviceStatuses = [
 ];
 
 export function App() {
+  const [selected, setSelected] = useState("overview");
+
   return (
     <Layout className="app-shell">
       <Sider className="app-sider" width={224} breakpoint="lg" collapsedWidth={0} theme="light">
@@ -36,7 +41,12 @@ export function App() {
           </span>
           <span>WorkHub</span>
         </div>
-        <Menu mode="inline" selectedKeys={["overview"]} items={navigation} />
+        <Menu
+          mode="inline"
+          selectedKeys={[selected]}
+          items={navigation}
+          onClick={({ key }) => setSelected(key)}
+        />
       </Sider>
       <Layout>
         <Header className="app-header">
@@ -44,27 +54,33 @@ export function App() {
           <Text type="secondary">单企业实例</Text>
         </Header>
         <Content className="app-content">
-          <section className="content-heading">
-            <Title level={2}>概览</Title>
-            <Paragraph type="secondary">服务接入后，这里将显示实例运行状态。</Paragraph>
-          </section>
+          {selected === "knowledge" ? (
+            <KnowledgePage />
+          ) : (
+            <>
+              <section className="content-heading">
+                <Title level={2}>概览</Title>
+                <Paragraph type="secondary">服务接入后，这里将显示实例运行状态。</Paragraph>
+              </section>
 
-          <section aria-labelledby="service-status-heading">
-            <Title id="service-status-heading" level={3}>
-              系统状态
-            </Title>
-            <div className="status-list">
-              {serviceStatuses.map((service) => (
-                <div className="status-row" key={service.name}>
-                  <Space size={10}>
-                    <Badge status={service.status} />
-                    <Text strong>{service.name}</Text>
-                  </Space>
-                  <Text type="secondary">{service.detail}</Text>
+              <section aria-labelledby="service-status-heading">
+                <Title id="service-status-heading" level={3}>
+                  系统状态
+                </Title>
+                <div className="status-list">
+                  {serviceStatuses.map((service) => (
+                    <div className="status-row" key={service.name}>
+                      <Space size={10}>
+                        <Badge status={service.status} />
+                        <Text strong>{service.name}</Text>
+                      </Space>
+                      <Text type="secondary">{service.detail}</Text>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
+              </section>
+            </>
+          )}
         </Content>
       </Layout>
     </Layout>

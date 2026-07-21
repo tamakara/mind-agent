@@ -72,10 +72,7 @@ class OfficialFeishuTransport:
             .build()
         )
         request = (
-            CreateMessageRequest.builder()
-            .receive_id_type("chat_id")
-            .request_body(body)
-            .build()
+            CreateMessageRequest.builder().receive_id_type("chat_id").request_body(body).build()
         )
         response = await self.client.im.v1.message.acreate(request)
         return _message_id(response)

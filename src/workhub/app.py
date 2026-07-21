@@ -23,14 +23,27 @@ from workhub.employees import EmployeeRepository, IdentityRepository
 from workhub.employees.api import create_employee_router
 from workhub.errors import ApplicationError, ErrorBody, ErrorResponse
 from workhub.feishu import FeishuEventRouter, FeishuGateway, OfficialFeishuTransport
+from workhub.knowledge import (
+    KnowledgeIndexer,
+    KnowledgeReconciler,
+    KnowledgeRepository,
+    KnowledgeRuntimeToolProvider,
+    KnowledgeService,
+    create_knowledge_router,
+)
+from workhub.knowledge.vector_store import KnowledgeVectorStore
 from workhub.observability import configure_logging
 from workhub.providers import (
     ModelSettingsRepository,
     OpenAICompatibleChatProvider,
     create_provider_router,
 )
-from workhub.providers.openai import ChatProvider
-from workhub.runtime import AgentRuntime, CoreRuntimeToolProvider
+from workhub.providers.openai import ChatProvider, EmbeddingProvider
+from workhub.runtime import (
+    AgentRuntime,
+    CompositeRuntimeToolProvider,
+    CoreRuntimeToolProvider,
+)
 from workhub.static import SpaStaticFiles
 from workhub.storage import Database, initialize_workhub_data_layout
 
@@ -183,6 +196,44 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 timeout_seconds=settings.agent_timeout_seconds,
             )
 
+        async def embedding_provider_factory() -> EmbeddingProvider:
+            stored = await model_settings.get("embedding")
+            from workhub.providers import OpenAICompatibleEmbeddingProvider
+
+            return OpenAICompatibleEmbeddingProvider(
+                base_url=stored.public.base_url,
+                api_key=stored.api_key,
+                model=stored.public.model,
+                timeout_seconds=settings.provider_test_timeout_seconds,
+            )
+
+        vector_store = await asyncio.to_thread(KnowledgeVectorStore, layout.knowledge_index)
+        knowledge_repository = KnowledgeRepository(database, layout, audit)
+        knowledge_indexer = KnowledgeIndexer(
+            database,
+            layout,
+            vector_store,
+            embedding_provider_factory,
+        )
+        knowledge_service = KnowledgeService(
+            database,
+            knowledge_repository,
+            knowledge_indexer,
+            vector_store,
+            embedding_provider_factory,
+        )
+        app.state.knowledge_service = knowledge_service
+        reconciler = KnowledgeReconciler(
+            database,
+            layout,
+            knowledge_repository,
+            knowledge_indexer,
+            vector_store,
+            audit,
+        )
+        await reconciler.run_once()
+        await knowledge_indexer.start()
+
         feishu_gateway: FeishuGateway | None = None
         if _feishu_configured(settings):
             assert settings.feishu_app_id is not None
@@ -197,7 +248,10 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 scroll_repository,
                 ScrollBuilder(scroll_repository),
                 chat_provider_factory,
-                CoreRuntimeToolProvider(recall_service),
+                CompositeRuntimeToolProvider(
+                    CoreRuntimeToolProvider(recall_service),
+                    KnowledgeRuntimeToolProvider(knowledge_service),
+                ),
                 transport,
                 max_iterations=settings.agent_max_iterations,
                 total_timeout_seconds=settings.agent_timeout_seconds,
@@ -221,6 +275,10 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
             yield
         finally:
             app.state.ready = False
+            try:
+                await asyncio.wait_for(knowledge_indexer.close(), settings.shutdown_timeout_seconds)
+            except TimeoutError:
+                logger.error("Knowledge indexer shutdown timed out")
             if feishu_gateway is not None:
                 try:
                     await asyncio.wait_for(
@@ -335,6 +393,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
     app.include_router(create_auth_router())
     app.include_router(create_employee_router())
     app.include_router(create_provider_router())
+    app.include_router(create_knowledge_router())
 
     if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
         app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")

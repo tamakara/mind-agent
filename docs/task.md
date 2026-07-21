@@ -85,25 +85,25 @@
 
 ## P4. 目录化 Knowledge / RAG
 
-- [ ] 创建 `knowledge/originals`、`staging`、`index` 目录和知识 schema
-- [ ] 实现目录树节点、稳定文档 ID、父子唯一名称和相对路径
-- [ ] 实现目录/文档创建、移动、重命名、保存、删除 API
-- [ ] 只接受 UTF-8 `.md`/`.txt` 和 10 MiB 限制，所有路径经过安全解析
-- [ ] 保存使用 `expected_revision`、原子替换和 SHA-256 内容去重
-- [ ] 内容变化时创建新版本与 queued 索引任务；哈希未变不计算 Embedding
-- [ ] Markdown 按标题层级切分，TXT 递归字符切分，并保存原文行号
-- [ ] 实现单并发索引消费者和 queued/indexing 重启恢复
-- [ ] 实现 pending/active generation，全成功后原子切换
-- [ ] 失败保存结构化错误和重试入口，旧 active generation 继续服务
-- [ ] 移动/重命名只更新路径元数据，内容不变时不重新 Embedding
-- [ ] 删除清理原文、chunk 元数据和全部向量 generation
-- [ ] 启动 Reconciler 对账原文、元数据和索引，不一致项排队修复
-- [ ] 实现 `search_knowledge`、`list_knowledge_directory` 和按行 `read_knowledge_document`
-- [ ] 检索结果包含文档 ID、版本、路径、标题路径、行号、片段和分数
-- [ ] 创建知识目录树、编辑器、索引状态、错误和重试 UI
-- [ ] 编写路径、revision、哈希、切片定位、generation、重命名和故障测试
-- [ ] 验收：保存自动索引，失败不影响旧索引，纯重命名不产生 Embedding 调用
-- [ ] **P4 完成**
+- [x] 创建 `knowledge/originals`、`staging`、`index` 目录和知识 schema
+- [x] 实现目录树节点、稳定文档 ID、父子唯一名称和相对路径
+- [x] 实现目录/文档创建、移动、重命名、保存、删除 API
+- [x] 只接受 UTF-8 `.md`/`.txt` 和 10 MiB 限制，所有路径经过安全解析
+- [x] 保存使用 `expected_revision`、原子替换和 SHA-256 内容去重
+- [x] 内容变化时创建新版本与 queued 索引任务；哈希未变不计算 Embedding
+- [x] Markdown 按标题层级切分，TXT 递归字符切分，并保存原文行号
+- [x] 实现单并发索引消费者和 queued/indexing 重启恢复
+- [x] 实现 pending/active generation，全成功后原子切换
+- [x] 失败保存结构化错误和重试入口，旧 active generation 继续服务
+- [x] 移动/重命名只更新路径元数据，内容不变时不重新 Embedding
+- [x] 删除清理原文、chunk 元数据和全部向量 generation
+- [x] 启动 Reconciler 对账原文、元数据和索引，不一致项排队修复
+- [x] 实现 `search_knowledge`、`list_knowledge_directory` 和按行 `read_knowledge_document`
+- [x] 检索结果包含文档 ID、版本、路径、标题路径、行号、片段和分数
+- [x] 创建知识目录树、编辑器、索引状态、错误和重试 UI
+- [x] 编写路径、revision、哈希、切片定位、generation、重命名和故障测试
+- [x] 验收：保存自动索引，失败不影响旧索引，纯重命名不产生 Embedding 调用
+- [x] **P4 完成**
 
 ## P5. MCP 与持久化员工确认
 
