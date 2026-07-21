@@ -1,0 +1,42 @@
+services:
+  workhub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      WORKHUB_DATA_DIR: /data/workhub
+      WORKHUB_HOST: 0.0.0.0
+      WORKHUB_PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - workhub-data:/data/workhub
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  mock-oa:
+    build:
+      context: .
+      dockerfile: mock-oa-service/Dockerfile
+    environment:
+      MOCK_OA_DATA_DIR: /data/mock-oa
+      MOCK_OA_HOST: 0.0.0.0
+      MOCK_OA_PORT: 8001
+    ports:
+      - "8001:8001"
+    volumes:
+      - mock-oa-data:/data/mock-oa
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/readyz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  workhub-data:
+  mock-oa-data:

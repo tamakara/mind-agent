@@ -57,7 +57,13 @@ warn_unreachable = true
 pretty = true
 
 [tool.pytest.ini_options]
-addopts = ["-ra", "--import-mode=importlib", "--strict-config", "--strict-markers"]
+addopts = [
+    "-ra",
+    "--basetemp=.pytest-tmp",
+    "--import-mode=importlib",
+    "--strict-config",
+    "--strict-markers",
+]
 asyncio_mode = "auto"
 testpaths = ["tests", "mock-oa-service/tests"]
 pythonpath = ["src", "mock-oa-service/src"]

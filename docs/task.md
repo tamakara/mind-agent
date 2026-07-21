@@ -2,7 +2,7 @@
 
 > 本文用于持续记录实现进度。完成子任务并通过对应验证后，将 `[ ]` 改为 `[x]`；阶段内全部任务与验收门槛完成后，才勾选阶段完成项。
 >
-> 当前基线：对话式企业服务入口的业务提案、强制规范和技术设计已完成，尚未创建应用源码。
+> 当前基线：双服务应用骨架、数据目录、基础 HTTP 生命周期和容器编排已完成，业务模块按阶段继续实现。
 
 ## 进度规则
 
@@ -21,12 +21,12 @@
 - [x] 配置 Ruff、类型检查、pytest、Vitest、Playwright 和前端 lint/format
 - [x] 建立 backend unit/contract/integration、Mock OA 和 frontend/e2e 测试目录
 - [x] 创建 `.env.example`，覆盖数据目录、监听地址、管理员引导值和必要凭据占位
-- [ ] 初始化 `<WORKHUB_DATA_DIR>` 与 `<MOCK_OA_DATA_DIR>`，限制目录和数据库权限
-- [ ] 建立结构化错误、request ID、日志脱敏和统一 REST 错误响应
-- [ ] 实现 `/healthz`、`/readyz` 和有限超时的启动/关闭生命周期
-- [ ] 创建双服务 Docker Compose 和独立持久卷
-- [ ] 验收：全新环境可安装、启动 WorkHub/Mock OA，并通过基础检查
-- [ ] **P0 完成**
+- [x] 初始化 `<WORKHUB_DATA_DIR>` 与 `<MOCK_OA_DATA_DIR>`，限制目录和数据库权限
+- [x] 建立结构化错误、request ID、日志脱敏和统一 REST 错误响应
+- [x] 实现 `/healthz`、`/readyz` 和有限超时的启动/关闭生命周期
+- [x] 创建双服务 Docker Compose 和独立持久卷
+- [x] 验收：全新环境可安装、启动 WorkHub/Mock OA，并通过基础检查
+- [x] **P0 完成**
 
 ## P1. 存储、认证与审计基础
 
