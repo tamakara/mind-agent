@@ -4,6 +4,7 @@ from workhub.runtime.tools import (
     CompositeRuntimeToolProvider,
     CoreRuntimeToolProvider,
     RuntimeTool,
+    RuntimeToolContext,
     RuntimeToolProvider,
 )
 
@@ -13,6 +14,7 @@ __all__ = [
     "CompositeRuntimeToolProvider",
     "CoreRuntimeToolProvider",
     "RuntimeTool",
+    "RuntimeToolContext",
     "RuntimeToolProvider",
     "actor_prompt",
 ]

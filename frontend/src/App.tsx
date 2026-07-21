@@ -10,6 +10,7 @@ import { Badge, Layout, Menu, Space, Typography } from "antd";
 import { useState } from "react";
 
 import { KnowledgePage } from "./knowledge/KnowledgePage";
+import { McpPage } from "./mcp/McpPage";
 
 const { Header, Content, Sider } = Layout;
 const { Paragraph, Text, Title } = Typography;
@@ -56,6 +57,8 @@ export function App() {
         <Content className="app-content">
           {selected === "knowledge" ? (
             <KnowledgePage />
+          ) : selected === "mcp" ? (
+            <McpPage />
           ) : (
             <>
               <section className="content-heading">

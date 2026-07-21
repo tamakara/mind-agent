@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 from uuid import UUID
 
-from workhub.domain import ActorContext, ToolDefinition
+from workhub.domain import ToolDefinition
 from workhub.knowledge.service import KnowledgeService
-from workhub.runtime.tools import RuntimeTool
+from workhub.runtime.tools import RuntimeTool, RuntimeToolContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +104,8 @@ class KnowledgeRuntimeToolProvider:
     def __init__(self, service: KnowledgeService) -> None:
         self.service = service
 
-    async def snapshot(self, actor: ActorContext, session_id: UUID) -> tuple[RuntimeTool, ...]:
-        del actor, session_id
+    async def snapshot(self, context: RuntimeToolContext) -> tuple[RuntimeTool, ...]:
+        del context
         return (
             cast(RuntimeTool, SearchKnowledgeTool(self.service)),
             cast(RuntimeTool, ListKnowledgeDirectoryTool(self.service)),

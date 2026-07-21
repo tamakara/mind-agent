@@ -13,7 +13,7 @@ from workhub.domain.context import ScrollWindow
 from workhub.feishu.transport import FeishuTransport
 from workhub.providers.openai import ChatProvider
 from workhub.runtime.prompt import SYSTEM_PROMPT, actor_prompt
-from workhub.runtime.tools import RuntimeTool, RuntimeToolProvider
+from workhub.runtime.tools import RuntimeTool, RuntimeToolContext, RuntimeToolProvider
 
 ProviderFactory = Callable[[], Awaitable[ChatProvider]]
 
@@ -87,7 +87,14 @@ class AgentRuntime:
             window = await self.scroll.build(
                 actor, session_id, token_budget=self.context_token_budget
             )
-            tools = await self.tool_provider.snapshot(actor, session_id)
+            tools = await self.tool_provider.snapshot(
+                RuntimeToolContext(
+                    actor=actor,
+                    session_id=session_id,
+                    turn_id=turn.turn_id,
+                    message=message,
+                )
+            )
             state: RuntimeState = {
                 "messages": _messages(window, actor),
                 "tools": tools,

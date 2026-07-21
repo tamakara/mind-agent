@@ -18,6 +18,7 @@ from workhub.audit import AuditWriter
 from workhub.auth import AuthService
 from workhub.auth.api import CSRF_COOKIE, SESSION_COOKIE, create_auth_router
 from workhub.config import WorkHubSettings
+from workhub.confirmations import ConfirmationService, PendingActionRepository
 from workhub.context import RecallService, ScrollBuilder, ScrollRepository
 from workhub.employees import EmployeeRepository, IdentityRepository
 from workhub.employees.api import create_employee_router
@@ -32,6 +33,8 @@ from workhub.knowledge import (
     create_knowledge_router,
 )
 from workhub.knowledge.vector_store import KnowledgeVectorStore
+from workhub.mcp import MCPManager, McpRepository, create_mcp_router
+from workhub.mcp.runtime import McpRuntimeToolProvider
 from workhub.observability import configure_logging
 from workhub.providers import (
     ModelSettingsRepository,
@@ -186,6 +189,15 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         recall_service = RecallService(database)
         app.state.scroll_repository = scroll_repository
         app.state.recall_service = recall_service
+        mcp_repository = McpRepository(database, audit)
+        mcp_manager = MCPManager(mcp_repository, timeout_seconds=settings.mcp_timeout_seconds)
+        pending_actions = PendingActionRepository(
+            database, audit, ttl_seconds=settings.pending_action_ttl_seconds
+        )
+        app.state.mcp_repository = mcp_repository
+        app.state.mcp_manager = mcp_manager
+        app.state.pending_action_repository = pending_actions
+        await mcp_manager.start()
 
         async def chat_provider_factory() -> ChatProvider:
             stored = await model_settings.get("chat")
@@ -251,6 +263,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 CompositeRuntimeToolProvider(
                     CoreRuntimeToolProvider(recall_service),
                     KnowledgeRuntimeToolProvider(knowledge_service),
+                    McpRuntimeToolProvider(mcp_repository, mcp_manager, pending_actions, transport),
                 ),
                 transport,
                 max_iterations=settings.agent_max_iterations,
@@ -259,7 +272,22 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 context_token_budget=settings.agent_context_token_budget,
             )
             app.state.agent_runtime = runtime
-            router = FeishuEventRouter(identities, transport, audit, message_handler=runtime)
+            confirmations = ConfirmationService(
+                pending_actions,
+                mcp_repository,
+                mcp_manager,
+                scroll_repository,
+                transport,
+            )
+            await confirmations.recover()
+            app.state.confirmation_service = confirmations
+            router = FeishuEventRouter(
+                identities,
+                transport,
+                audit,
+                message_handler=runtime,
+                card_handler=confirmations,
+            )
             feishu_gateway = FeishuGateway(
                 settings.feishu_app_id,
                 app_secret,
@@ -286,6 +314,10 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                     )
                 except TimeoutError:
                     logger.error("Feishu shutdown timed out")
+            try:
+                await asyncio.wait_for(mcp_manager.close(), settings.shutdown_timeout_seconds)
+            except TimeoutError:
+                logger.error("MCP shutdown timed out")
             logger.info("WorkHub stopped")
 
     app = FastAPI(title="WorkHub", version="0.1.0", lifespan=lifespan)
@@ -394,6 +426,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
     app.include_router(create_employee_router())
     app.include_router(create_provider_router())
     app.include_router(create_knowledge_router())
+    app.include_router(create_mcp_router())
 
     if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
         app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")

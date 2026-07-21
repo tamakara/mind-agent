@@ -288,7 +288,9 @@ export function KnowledgePage() {
                   </Text>
                 </div>
                 <Space wrap>
-                  {selectedNode.index_status ? <IndexTag status={selectedNode.index_status} /> : null}
+                  {selectedNode.index_status ? (
+                    <IndexTag status={selectedNode.index_status} />
+                  ) : null}
                   <Button
                     type="text"
                     icon={<EditOutlined />}
@@ -300,7 +302,9 @@ export function KnowledgePage() {
                   />
                   <Popconfirm
                     title="删除所选内容？"
-                    description={selectedNode.node_type === "directory" ? "目录内的文档也会删除。" : undefined}
+                    description={
+                      selectedNode.node_type === "directory" ? "目录内的文档也会删除。" : undefined
+                    }
                     okButtonProps={{ danger: true }}
                     onConfirm={() => void deleteNode()}
                   >

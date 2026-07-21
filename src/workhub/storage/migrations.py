@@ -327,7 +327,16 @@ INITIAL_SCHEMA = Migration(
     ),
 )
 
-MIGRATIONS = (INITIAL_SCHEMA,)
+P5_CONFIRMATION_SCHEMA = Migration(
+    version=2,
+    name="p5_confirmation_schema",
+    statements=(
+        "ALTER TABLE pending_actions ADD COLUMN card_message_id TEXT",
+        "CREATE INDEX idx_pending_recovery ON pending_actions(status, expires_at, created_at)",
+    ),
+)
+
+MIGRATIONS = (INITIAL_SCHEMA, P5_CONFIRMATION_SCHEMA)
 
 
 async def apply_migrations(database: "Database") -> None:

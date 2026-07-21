@@ -14,3 +14,8 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: vi.fn(),
   })),
 });
+
+const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+vi.spyOn(window, "getComputedStyle").mockImplementation((element) =>
+  nativeGetComputedStyle(element),
+);

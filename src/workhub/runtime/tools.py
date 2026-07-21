@@ -4,27 +4,36 @@ from typing import Any, ClassVar, Literal, Protocol, cast
 from uuid import UUID
 
 from workhub.context import RecallService
-from workhub.domain import ActorContext, ToolDefinition
+from workhub.domain import ActorContext, FeishuMessage, ToolDefinition
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeToolContext:
+    actor: ActorContext
+    session_id: UUID
+    turn_id: UUID
+    message: FeishuMessage
 
 
 class RuntimeTool(Protocol):
-    definition: ToolDefinition
+    @property
+    def definition(self) -> ToolDefinition: ...
 
     async def execute(self, arguments: dict[str, Any]) -> str: ...
 
 
 class RuntimeToolProvider(Protocol):
-    async def snapshot(self, actor: ActorContext, session_id: UUID) -> tuple[RuntimeTool, ...]: ...
+    async def snapshot(self, context: RuntimeToolContext) -> tuple[RuntimeTool, ...]: ...
 
 
 class CompositeRuntimeToolProvider:
     def __init__(self, *providers: RuntimeToolProvider) -> None:
         self.providers = providers
 
-    async def snapshot(self, actor: ActorContext, session_id: UUID) -> tuple[RuntimeTool, ...]:
+    async def snapshot(self, context: RuntimeToolContext) -> tuple[RuntimeTool, ...]:
         tools: list[RuntimeTool] = []
         for provider in self.providers:
-            tools.extend(await provider.snapshot(actor, session_id))
+            tools.extend(await provider.snapshot(context))
         names = [tool.definition.name for tool in tools]
         if len(names) != len(set(names)):
             raise ValueError("Runtime tool names must be unique")
@@ -68,5 +77,10 @@ class CoreRuntimeToolProvider:
     def __init__(self, recall: RecallService) -> None:
         self.recall = recall
 
-    async def snapshot(self, actor: ActorContext, session_id: UUID) -> tuple[RuntimeTool, ...]:
-        return (cast(RuntimeTool, RecallRuntimeTool(self.recall, actor, session_id)),)
+    async def snapshot(self, context: RuntimeToolContext) -> tuple[RuntimeTool, ...]:
+        return (
+            cast(
+                RuntimeTool,
+                RecallRuntimeTool(self.recall, context.actor, context.session_id),
+            ),
+        )

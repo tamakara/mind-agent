@@ -107,28 +107,28 @@
 
 ## P5. MCP 与持久化员工确认
 
-- [ ] 定义 `ToolDescriptor`、`McpToolEffect` 和执行快照契约
-- [ ] 创建 mcp_clients、mcp_tools、mcp_tool_settings repository
-- [ ] 只实现 Streamable HTTP 状态化客户端和敏感 headers 脱敏语义
-- [ ] 实现客户端连接、重连、关闭、工具发现和单客户端故障隔离
-- [ ] 实现安全模型工具名、原始名称映射和冲突拒绝
-- [ ] 实现工具白名单与 `allow/confirm/deny` 策略独立求值
-- [ ] 新客户端和新发现工具默认 `deny`；deny 在执行端之前拒绝
-- [ ] 从模型 Schema 移除主体字段和幂等键，并在执行包装器注入 ActorContext
-- [ ] 创建 `pending_actions` repository、状态约束和唯一幂等键
-- [ ] 规范化工具参数并计算哈希，生成确定性确认摘要和安全随机 token
-- [ ] 数据库只存 token 哈希；飞书卡片只携带原 token 和决定
-- [ ] `confirm` 在当前 run 只创建动作和卡片，确保 MCP 零调用
-- [ ] 卡片投递失败时原子取消动作，禁止不可见动作被后续执行
-- [ ] 回调校验 identity、员工状态、地址、token、有效期、参数哈希和工具策略
-- [ ] 通过条件更新原子抢占 pending；取消和重复回调保持幂等
-- [ ] 确认创建独立 confirmation turn，不启动 LLM，并调用 MCP
-- [ ] 执行结果更新动作、Scroll、卡片和原飞书私聊回复
-- [ ] 启动时过期旧 pending，并用幂等键恢复遗留 executing
-- [ ] 创建 MCP 客户端、工具发现、白名单和策略 UI
-- [ ] 编写策略、Schema 主体剥离、跨用户、过期、重放、竞态、重启和脱敏测试
-- [ ] 验收：allow 直接执行；confirm 未确认零执行；deny 零连接；重复确认只产生一个业务请求
-- [ ] **P5 完成**
+- [x] 定义 `ToolDescriptor`、`McpToolEffect` 和执行快照契约
+- [x] 创建 mcp_clients、mcp_tools、mcp_tool_settings repository
+- [x] 只实现 Streamable HTTP 状态化客户端和敏感 headers 脱敏语义
+- [x] 实现客户端连接、重连、关闭、工具发现和单客户端故障隔离
+- [x] 实现安全模型工具名、原始名称映射和冲突拒绝
+- [x] 实现工具白名单与 `allow/confirm/deny` 策略独立求值
+- [x] 新客户端和新发现工具默认 `deny`；deny 在执行端之前拒绝
+- [x] 从模型 Schema 移除主体字段和幂等键，并在执行包装器注入 ActorContext
+- [x] 创建 `pending_actions` repository、状态约束和唯一幂等键
+- [x] 规范化工具参数并计算哈希，生成确定性确认摘要和安全随机 token
+- [x] 数据库只存 token 哈希；飞书卡片只携带原 token 和决定
+- [x] `confirm` 在当前 run 只创建动作和卡片，确保 MCP 零调用
+- [x] 卡片投递失败时原子取消动作，禁止不可见动作被后续执行
+- [x] 回调校验 identity、员工状态、地址、token、有效期、参数哈希和工具策略
+- [x] 通过条件更新原子抢占 pending；取消和重复回调保持幂等
+- [x] 确认创建独立 confirmation turn，不启动 LLM，并调用 MCP
+- [x] 执行结果更新动作、Scroll、卡片和原飞书私聊回复
+- [x] 启动时过期旧 pending，并用幂等键恢复遗留 executing
+- [x] 创建 MCP 客户端、工具发现、白名单和策略 UI
+- [x] 编写策略、Schema 主体剥离、跨用户、过期、重放、竞态、重启和脱敏测试
+- [x] 验收：allow 直接执行；confirm 未确认零执行；deny 零连接；重复确认只产生一个业务请求
+- [x] **P5 完成**
 
 ## P6. 独立 Mock OA 服务
 

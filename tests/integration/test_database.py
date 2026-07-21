@@ -71,7 +71,9 @@ async def test_migrations_are_idempotent_and_connections_have_required_pragmas(
     assert journal_mode[0] == "wal"
     assert foreign_keys[0] == 1
     assert busy_timeout[0] == 2_500
-    assert [(row["version"], row["name"]) for row in migrations] == [(1, "initial_schema")]
+    assert [(row["version"], row["name"]) for row in migrations] == [
+        (migration.version, migration.name) for migration in MIGRATIONS
+    ]
 
 
 async def test_failed_transaction_rolls_back_all_writes(tmp_path: Path) -> None:
@@ -133,7 +135,7 @@ async def test_failed_migration_is_atomic(tmp_path: Path, monkeypatch: pytest.Mo
     database = Database(tmp_path / "app.db")
     await database.migrate()
     failing = Migration(
-        version=2,
+        version=max(migration.version for migration in MIGRATIONS) + 1,
         name="failing_test_migration",
         statements=("CREATE TABLE must_rollback(id TEXT PRIMARY KEY)", "INVALID SQL"),
     )
@@ -149,7 +151,9 @@ async def test_failed_migration_is_atomic(tmp_path: Path, monkeypatch: pytest.Mo
             )
         ).fetchone()
         version = await (
-            await connection.execute("SELECT version FROM schema_migrations WHERE version = 2")
+            await connection.execute(
+                "SELECT version FROM schema_migrations WHERE version = ?", (failing.version,)
+            )
         ).fetchone()
     assert table is None
     assert version is None

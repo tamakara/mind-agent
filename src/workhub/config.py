@@ -44,6 +44,8 @@ class WorkHubSettings(BaseSettings):
     agent_tool_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     agent_max_iterations: int = Field(default=8, ge=1, le=32)
     agent_context_token_budget: int = Field(default=8_000, ge=512, le=1_000_000)
+    mcp_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    pending_action_ttl_seconds: int = Field(default=600, ge=60, le=3600)
 
     @field_validator("data_dir", "static_dir")
     @classmethod
