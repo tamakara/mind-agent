@@ -28,24 +28,6 @@ class WorkHubSettings(BaseSettings):
     admin_login_max_attempts: int = Field(default=5, ge=1, le=100)
     admin_cookie_secure: bool = False
     allowed_origins: str = "http://127.0.0.1:8000,http://localhost:8000"
-    feishu_app_id: str | None = None
-    feishu_app_secret: SecretStr | None = None
-    feishu_reconnect_attempts: int = Field(default=3, ge=0, le=20)
-    feishu_reconnect_delay_seconds: float = Field(default=1.0, ge=0, le=60)
-    feishu_api_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
-    chat_base_url: str | None = None
-    chat_api_key: SecretStr | None = None
-    chat_model: str | None = None
-    embedding_base_url: str | None = None
-    embedding_api_key: SecretStr | None = None
-    embedding_model: str | None = None
-    provider_test_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
-    agent_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
-    agent_tool_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
-    agent_max_iterations: int = Field(default=8, ge=1, le=32)
-    agent_context_token_budget: int = Field(default=8_000, ge=512, le=1_000_000)
-    mcp_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
-    pending_action_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     mock_oa_mcp_url: str | None = None
     mock_oa_shared_secret: SecretStr | None = None
 

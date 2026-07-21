@@ -11,7 +11,6 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from workhub.audit import AuditWriter
@@ -33,6 +32,7 @@ from workhub.knowledge import (
     create_knowledge_router,
 )
 from workhub.knowledge.vector_store import KnowledgeVectorStore
+from workhub.management import create_management_router
 from workhub.mcp import MCPManager, McpRepository, create_mcp_router
 from workhub.mcp.runtime import McpRuntimeToolProvider
 from workhub.observability import configure_logging
@@ -46,6 +46,13 @@ from workhub.runtime import (
     AgentRuntime,
     CompositeRuntimeToolProvider,
     CoreRuntimeToolProvider,
+)
+from workhub.settings import (
+    FeishuSettingsRepository,
+    RuntimeSetting,
+    RuntimeSettingsRepository,
+    StoredFeishuSetting,
+    create_settings_router,
 )
 from workhub.static import SpaStaticFiles
 from workhub.storage import Database, initialize_workhub_data_layout
@@ -184,16 +191,23 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         app.state.identity_repository = identities
         model_settings = ModelSettingsRepository(database, audit)
         app.state.model_settings_repository = model_settings
-        await _bootstrap_provider_settings(model_settings, settings)
+        runtime_settings_repository = RuntimeSettingsRepository(database, audit)
+        feishu_settings_repository = FeishuSettingsRepository(database, audit)
+        runtime_setting = await runtime_settings_repository.get()
+        app.state.runtime_settings_repository = runtime_settings_repository
+        app.state.feishu_settings_repository = feishu_settings_repository
+        app.state.runtime_setting = runtime_setting
         scroll_repository = ScrollRepository(database)
         recall_service = RecallService(database)
         app.state.scroll_repository = scroll_repository
         app.state.recall_service = recall_service
         mcp_repository = McpRepository(database, audit)
         await _bootstrap_mock_oa_client(mcp_repository, settings)
-        mcp_manager = MCPManager(mcp_repository, timeout_seconds=settings.mcp_timeout_seconds)
+        mcp_manager = MCPManager(
+            mcp_repository, timeout_seconds=runtime_setting.mcp_timeout_seconds
+        )
         pending_actions = PendingActionRepository(
-            database, audit, ttl_seconds=settings.pending_action_ttl_seconds
+            database, audit, ttl_seconds=runtime_setting.pending_action_ttl_seconds
         )
         app.state.mcp_repository = mcp_repository
         app.state.mcp_manager = mcp_manager
@@ -206,7 +220,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 base_url=stored.public.base_url,
                 api_key=stored.api_key,
                 model=stored.public.model,
-                timeout_seconds=settings.agent_timeout_seconds,
+                timeout_seconds=runtime_setting.agent_timeout_seconds,
             )
 
         async def embedding_provider_factory() -> EmbeddingProvider:
@@ -217,7 +231,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 base_url=stored.public.base_url,
                 api_key=stored.api_key,
                 model=stored.public.model,
-                timeout_seconds=settings.provider_test_timeout_seconds,
+                timeout_seconds=runtime_setting.provider_test_timeout_seconds,
             )
 
         vector_store = await asyncio.to_thread(KnowledgeVectorStore, layout.knowledge_index)
@@ -247,15 +261,18 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         await reconciler.run_once()
         await knowledge_indexer.start()
 
-        feishu_gateway: FeishuGateway | None = None
-        if _feishu_configured(settings):
-            assert settings.feishu_app_id is not None
-            assert settings.feishu_app_secret is not None
-            app_secret = settings.feishu_app_secret.get_secret_value()
+        app.state.feishu_gateway = None
+        app.state.agent_runtime = None
+        app.state.confirmation_service = None
+        app.state.feishu_last_apply_error = None
+
+        async def build_feishu(
+            stored: StoredFeishuSetting,
+        ) -> tuple[FeishuGateway, AgentRuntime, ConfirmationService]:
             transport = OfficialFeishuTransport(
-                settings.feishu_app_id,
-                app_secret,
-                timeout_seconds=settings.feishu_api_timeout_seconds,
+                stored.public.app_id,
+                stored.app_secret,
+                timeout_seconds=runtime_setting.feishu_api_timeout_seconds,
             )
             runtime = AgentRuntime(
                 scroll_repository,
@@ -267,12 +284,11 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                     McpRuntimeToolProvider(mcp_repository, mcp_manager, pending_actions, transport),
                 ),
                 transport,
-                max_iterations=settings.agent_max_iterations,
-                total_timeout_seconds=settings.agent_timeout_seconds,
-                tool_timeout_seconds=settings.agent_tool_timeout_seconds,
-                context_token_budget=settings.agent_context_token_budget,
+                max_iterations=runtime_setting.agent_max_iterations,
+                total_timeout_seconds=runtime_setting.agent_timeout_seconds,
+                tool_timeout_seconds=runtime_setting.agent_tool_timeout_seconds,
+                context_token_budget=runtime_setting.agent_context_token_budget,
             )
-            app.state.agent_runtime = runtime
             confirmations = ConfirmationService(
                 pending_actions,
                 mcp_repository,
@@ -281,7 +297,6 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 transport,
             )
             await confirmations.recover()
-            app.state.confirmation_service = confirmations
             router = FeishuEventRouter(
                 identities,
                 transport,
@@ -289,15 +304,51 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 message_handler=runtime,
                 card_handler=confirmations,
             )
-            feishu_gateway = FeishuGateway(
-                settings.feishu_app_id,
-                app_secret,
+            gateway = FeishuGateway(
+                stored.public.app_id,
+                stored.app_secret,
                 router,
-                reconnect_attempts=settings.feishu_reconnect_attempts,
-                reconnect_delay_seconds=settings.feishu_reconnect_delay_seconds,
+                reconnect_attempts=runtime_setting.feishu_reconnect_attempts,
+                reconnect_delay_seconds=runtime_setting.feishu_reconnect_delay_seconds,
             )
-            await feishu_gateway.start()
-        app.state.feishu_gateway = feishu_gateway
+            return gateway, runtime, confirmations
+
+        async def apply_feishu_settings() -> None:
+            stored = await feishu_settings_repository.get()
+            old_gateway: FeishuGateway | None = app.state.feishu_gateway
+            if stored is None:
+                if old_gateway is not None:
+                    await old_gateway.close()
+                app.state.feishu_gateway = None
+                app.state.agent_runtime = None
+                app.state.confirmation_service = None
+                return
+            gateway, runtime, confirmations = await build_feishu(stored)
+            await gateway.start()
+            if old_gateway is not None:
+                await old_gateway.close()
+            app.state.feishu_gateway = gateway
+            app.state.agent_runtime = runtime
+            app.state.confirmation_service = confirmations
+            app.state.feishu_last_apply_error = None
+
+        async def apply_runtime_settings(value: RuntimeSetting) -> None:
+            nonlocal runtime_setting
+            runtime_setting = value
+            app.state.runtime_setting = value
+            mcp_manager.timeout_seconds = value.mcp_timeout_seconds
+            pending_actions.ttl_seconds = value.pending_action_ttl_seconds
+            runtime: AgentRuntime | None = app.state.agent_runtime
+            if runtime is not None:
+                runtime.max_iterations = value.agent_max_iterations
+                runtime.total_timeout_seconds = value.agent_timeout_seconds
+                runtime.tool_timeout_seconds = value.agent_tool_timeout_seconds
+                runtime.context_token_budget = value.agent_context_token_budget
+            await apply_feishu_settings()
+
+        app.state.apply_feishu_settings = apply_feishu_settings
+        app.state.apply_runtime_settings = apply_runtime_settings
+        await apply_feishu_settings()
         app.state.ready = True
         logger.info("WorkHub started")
         try:
@@ -308,6 +359,7 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
                 await asyncio.wait_for(knowledge_indexer.close(), settings.shutdown_timeout_seconds)
             except TimeoutError:
                 logger.error("Knowledge indexer shutdown timed out")
+            feishu_gateway: FeishuGateway | None = app.state.feishu_gateway
             if feishu_gateway is not None:
                 try:
                     await asyncio.wait_for(
@@ -413,14 +465,21 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
     @app.get("/api/v1/feishu/status", tags=["feishu"])
     async def feishu_status(request: Request) -> dict[str, object]:
         gateway: FeishuGateway | None = request.app.state.feishu_gateway
+        stored = await request.app.state.feishu_settings_repository.get()
         if gateway is None:
-            return {"state": "disabled"}
+            return {
+                "state": "disabled",
+                "configured": stored is not None,
+                "last_apply_error": request.app.state.feishu_last_apply_error,
+            }
         status = gateway.status()
         return {
             "state": status.state,
+            "configured": stored is not None,
             "reconnect_attempt": status.reconnect_attempt,
             "last_error": status.last_error,
             "updated_at": status.updated_at,
+            "last_apply_error": request.app.state.feishu_last_apply_error,
         }
 
     app.include_router(create_auth_router())
@@ -428,6 +487,8 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
     app.include_router(create_provider_router())
     app.include_router(create_knowledge_router())
     app.include_router(create_mcp_router())
+    app.include_router(create_management_router())
+    app.include_router(create_settings_router())
 
     if settings.static_dir.is_dir() and (settings.static_dir / "index.html").is_file():
         app.mount("/", SpaStaticFiles(settings.static_dir), name="admin")
@@ -435,63 +496,6 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         logger.info("Administration frontend is not built; static serving is disabled")
 
     return app
-
-
-def _feishu_configured(settings: WorkHubSettings) -> bool:
-    if settings.feishu_app_id is None or settings.feishu_app_secret is None:
-        return False
-    app_id = settings.feishu_app_id.strip()
-    secret = settings.feishu_app_secret.get_secret_value().strip()
-    return bool(
-        app_id
-        and secret
-        and not app_id.startswith("change-me")
-        and not secret.startswith("change-me")
-    )
-
-
-async def _bootstrap_provider_settings(
-    repository: ModelSettingsRepository, settings: WorkHubSettings
-) -> None:
-    if _initial_provider_configured(
-        settings.chat_base_url, settings.chat_api_key, settings.chat_model
-    ):
-        assert settings.chat_base_url is not None
-        assert settings.chat_api_key is not None
-        assert settings.chat_model is not None
-        await repository.bootstrap(
-            "chat",
-            base_url=settings.chat_base_url,
-            api_key=settings.chat_api_key.get_secret_value(),
-            model=settings.chat_model,
-        )
-    if _initial_provider_configured(
-        settings.embedding_base_url, settings.embedding_api_key, settings.embedding_model
-    ):
-        assert settings.embedding_base_url is not None
-        assert settings.embedding_api_key is not None
-        assert settings.embedding_model is not None
-        await repository.bootstrap(
-            "embedding",
-            base_url=settings.embedding_base_url,
-            api_key=settings.embedding_api_key.get_secret_value(),
-            model=settings.embedding_model,
-        )
-
-
-def _initial_provider_configured(
-    base_url: str | None, api_key: SecretStr | None, model: str | None
-) -> bool:
-    if base_url is None or api_key is None or model is None:
-        return False
-    secret = api_key.get_secret_value()
-    return bool(
-        base_url.strip()
-        and model.strip()
-        and secret.strip()
-        and not model.startswith("change-me")
-        and not secret.startswith("change-me")
-    )
 
 
 async def _bootstrap_mock_oa_client(repository: McpRepository, settings: WorkHubSettings) -> None:

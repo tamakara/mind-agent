@@ -332,6 +332,8 @@ MCP                  # 客户端、发现工具、白名单和策略
 
 ## 12. 配置、数据库与部署
 
+运行时配置由 `model_settings`、`feishu_settings` 和 `runtime_settings` 保存。启动参数由 Compose 固定注入；管理员首次引导凭据仍由环境变量提供。管理 API 保存配置后，模型工厂读取新版本，运行对象更新超时参数，Feishu Gateway 使用新凭据优雅重建。详细约定见 [runtime-configuration.md](runtime-configuration.md)。
+
 `app.db` 是 WorkHub 状态真相来源，至少包含：
 
 ```text

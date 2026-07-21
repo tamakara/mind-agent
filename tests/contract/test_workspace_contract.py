@@ -32,21 +32,7 @@ def test_environment_example_covers_bootstrap_contract() -> None:
     }
 
     assert {
-        "WORKHUB_DATA_DIR",
-        "WORKHUB_HOST",
-        "WORKHUB_PORT",
         "WORKHUB_BOOTSTRAP_ADMIN_USERNAME",
         "WORKHUB_BOOTSTRAP_ADMIN_PASSWORD",
         "WORKHUB_SESSION_SECRET",
-        "WORKHUB_CHAT_API_KEY",
-        "WORKHUB_EMBEDDING_API_KEY",
-        "WORKHUB_FEISHU_APP_ID",
-        "WORKHUB_FEISHU_APP_SECRET",
-        "WORKHUB_MOCK_OA_SHARED_SECRET",
-        "MOCK_OA_DATA_DIR",
-        "MOCK_OA_HOST",
-        "MOCK_OA_PORT",
-        "MOCK_OA_ADMIN_TOKEN",
-        "MOCK_OA_WORKHUB_SHARED_SECRET",
     } <= entries.keys()
-    assert entries["WORKHUB_MOCK_OA_SHARED_SECRET"] == entries["MOCK_OA_WORKHUB_SHARED_SECRET"]

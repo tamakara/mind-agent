@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 
+import workhub.mcp.manager as mcp_manager_module
 from workhub.audit import AuditWriter
 from workhub.confirmations import ConfirmationService, PendingActionRepository
 from workhub.context import ScrollRepository
@@ -221,6 +222,47 @@ async def test_deny_rejects_before_manager_connects(tmp_path: Path) -> None:
             descriptor, {"start_date": "2026-08-01", "days": 1}, actor
         )
     assert manager.health() == {}
+
+
+async def test_connection_failure_is_isolated_and_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class BrokenConnection:
+        def __init__(self, *_: object, **__: object) -> None:
+            self.closed = False
+
+        async def discover(self) -> list[dict[str, Any]]:
+            raise ConnectionError("offline")
+
+        async def close(self, *, force: bool = False) -> None:
+            assert force is True
+            self.closed = True
+
+    monkeypatch.setattr(mcp_manager_module, "_Connection", BrokenConnection)
+    database = Database(tmp_path / "app.db")
+    await database.migrate()
+    repository = McpRepository(database, AuditWriter(database))
+    client = await repository.upsert_client(
+        client_id=None,
+        client_key="offline_oa",
+        name="Offline OA",
+        url="http://127.0.0.1:9001/mcp",
+        headers=None,
+        enabled=True,
+        expected_revision=None,
+        actor_id="admin",
+        request_id="create-offline",
+    )
+    manager = MCPManager(repository, timeout_seconds=0.1)
+
+    with pytest.raises(ApplicationError) as captured:
+        await manager.reconnect(client.client_id)
+
+    assert captured.value.code == "mcp_connection_failed"
+    assert captured.value.details == [{"error_type": "ConnectionError"}]
+    assert manager.health()["offline_oa"].state == "error"
+    assert manager.health()["offline_oa"].error_code == "ConnectionError"
+    assert manager._connections == {}
 
 
 async def test_allow_runtime_tool_executes_without_confirmation_card(tmp_path: Path) -> None:

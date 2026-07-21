@@ -22,6 +22,59 @@ body {
   min-height: 100vh;
 }
 
+.session-loading,
+.fatal-error {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: #edf1ef;
+}
+
+.login-panel {
+  width: min(100%, 380px);
+  padding: 32px;
+  border: 1px solid #d8dedb;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.login-panel h1.ant-typography {
+  margin: 24px 0 0;
+  font-size: 24px;
+}
+
+.login-panel .ant-alert {
+  margin: 20px 0;
+}
+
+.login-panel form {
+  margin-top: 24px;
+}
+
+.login-brand,
+.admin-session,
+.page-heading,
+.credential-state {
+  display: flex;
+  align-items: center;
+}
+
+.login-brand,
+.admin-session,
+.credential-state {
+  gap: 10px;
+}
+
 .app-shell {
   min-height: 100vh;
   background: #f4f6f5;
@@ -73,6 +126,12 @@ body {
   margin-bottom: 36px;
 }
 
+.page-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
 .content-heading .ant-typography,
 #service-status-heading {
   margin-top: 0;
@@ -91,6 +150,69 @@ body {
 .status-list {
   border-top: 1px solid #d8dedb;
   background: #ffffff;
+}
+
+.metric-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  margin-bottom: 32px;
+  border-top: 1px solid #d8dedb;
+  border-bottom: 1px solid #d8dedb;
+  background: #ffffff;
+}
+
+.metric-item {
+  display: grid;
+  min-height: 76px;
+  align-content: center;
+  padding: 12px 16px;
+  border-right: 1px solid #e5e9e7;
+  gap: 4px;
+}
+
+.metric-item .ant-typography:last-child {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.metric-attention {
+  color: #b54708;
+}
+
+.table-primary {
+  display: grid;
+  min-width: 150px;
+  gap: 2px;
+}
+
+.identity-select {
+  width: min(100%, 260px);
+}
+
+.settings-panel {
+  display: grid;
+  max-width: 720px;
+  gap: 20px;
+}
+
+.settings-panel form {
+  max-width: 620px;
+}
+
+.audit-filters {
+  margin-bottom: 16px;
+  gap: 8px 0;
+}
+
+.audit-filters .ant-input {
+  width: 150px;
+}
+
+.audit-summary {
+  display: inline-block;
+  max-width: 420px;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .status-row {
@@ -278,6 +400,15 @@ body {
   .knowledge-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .page-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .login-panel {
+    padding: 24px;
   }
 
   .mcp-heading {

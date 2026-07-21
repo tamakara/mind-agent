@@ -336,7 +336,52 @@ P5_CONFIRMATION_SCHEMA = Migration(
     ),
 )
 
-MIGRATIONS = (INITIAL_SCHEMA, P5_CONFIRMATION_SCHEMA)
+RUNTIME_SETTINGS_SCHEMA = Migration(
+    version=3,
+    name="runtime_settings_schema",
+    statements=(
+        """
+        CREATE TABLE runtime_settings (
+            id TEXT PRIMARY KEY CHECK (id = 'default'),
+            provider_test_timeout_seconds REAL NOT NULL CHECK (
+                provider_test_timeout_seconds > 0 AND provider_test_timeout_seconds <= 60
+            ),
+            agent_timeout_seconds REAL NOT NULL CHECK (
+                agent_timeout_seconds > 0 AND agent_timeout_seconds <= 300
+            ),
+            agent_tool_timeout_seconds REAL NOT NULL CHECK (
+                agent_tool_timeout_seconds > 0 AND agent_tool_timeout_seconds <= 120
+            ),
+            agent_max_iterations INTEGER NOT NULL CHECK (
+                agent_max_iterations >= 1 AND agent_max_iterations <= 32
+            ),
+            agent_context_token_budget INTEGER NOT NULL CHECK (
+                agent_context_token_budget >= 512 AND agent_context_token_budget <= 1000000
+            ),
+            mcp_timeout_seconds REAL NOT NULL CHECK (
+                mcp_timeout_seconds > 0 AND mcp_timeout_seconds <= 120
+            ),
+            pending_action_ttl_seconds INTEGER NOT NULL CHECK (
+                pending_action_ttl_seconds >= 60 AND pending_action_ttl_seconds <= 3600
+            ),
+            feishu_reconnect_attempts INTEGER NOT NULL CHECK (
+                feishu_reconnect_attempts >= 0 AND feishu_reconnect_attempts <= 20
+            ),
+            feishu_reconnect_delay_seconds REAL NOT NULL CHECK (
+                feishu_reconnect_delay_seconds >= 0 AND feishu_reconnect_delay_seconds <= 60
+            ),
+            feishu_api_timeout_seconds REAL NOT NULL CHECK (
+                feishu_api_timeout_seconds > 0 AND feishu_api_timeout_seconds <= 60
+            ),
+            revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+    ),
+)
+
+MIGRATIONS = (INITIAL_SCHEMA, P5_CONFIRMATION_SCHEMA, RUNTIME_SETTINGS_SCHEMA)
 
 
 async def apply_migrations(database: "Database") -> None:

@@ -3,17 +3,24 @@ import {
   AuditOutlined,
   BookOutlined,
   DashboardOutlined,
+  LogoutOutlined,
   SettingOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
-import { Badge, Layout, Menu, Space, Typography } from "antd";
-import { useState } from "react";
+import { Button, Layout, Menu, Spin, Typography } from "antd";
+import { useEffect, useState } from "react";
 
+import { apiClient, WorkHubApiError } from "./api/client";
+import { AuditPage } from "./audit/AuditPage";
+import { type AdminSession, LoginPage } from "./auth/LoginPage";
+import { EmployeesPage } from "./employees/EmployeesPage";
 import { KnowledgePage } from "./knowledge/KnowledgePage";
 import { McpPage } from "./mcp/McpPage";
+import { OverviewPage } from "./overview/OverviewPage";
+import { SettingsPage } from "./settings/SettingsPage";
 
 const { Header, Content, Sider } = Layout;
-const { Paragraph, Text, Title } = Typography;
+const { Text } = Typography;
 
 const navigation = [
   { key: "overview", icon: <DashboardOutlined />, label: "概览" },
@@ -24,18 +31,45 @@ const navigation = [
   { key: "settings", icon: <SettingOutlined />, label: "设置" },
 ];
 
-const serviceStatuses = [
-  { name: "WorkHub API", detail: "等待后端服务", status: "default" as const },
-  { name: "Mock OA", detail: "等待后端服务", status: "default" as const },
-  { name: "飞书连接", detail: "尚未配置", status: "warning" as const },
-];
-
 export function App() {
-  const [selected, setSelected] = useState("overview");
+  const [session, setSession] = useState<AdminSession | null | undefined>(undefined);
+  const [selected, setSelected] = useState(initialPage);
+
+  useEffect(() => {
+    void apiClient
+      .request<AdminSession>("auth/session")
+      .then(setSession)
+      .catch((reason: unknown) => {
+        if (reason instanceof WorkHubApiError && reason.status === 401) setSession(null);
+        else setSession(null);
+      });
+  }, []);
+
+  if (session === undefined)
+    return (
+      <main className="session-loading">
+        <Spin size="large" />
+      </main>
+    );
+  if (session === null) return <LoginPage onLogin={setSession} />;
+
+  async function logout() {
+    try {
+      await apiClient.request("auth/logout", { method: "POST" });
+    } finally {
+      setSession(null);
+    }
+  }
+
+  function navigate(key: string) {
+    setSelected(key);
+    const path = key === "overview" ? "/" : `/${key}`;
+    window.history.pushState({}, "", path);
+  }
 
   return (
     <Layout className="app-shell">
-      <Sider className="app-sider" width={224} breakpoint="lg" collapsedWidth={0} theme="light">
+      <Sider className="app-sider" width={216} breakpoint="lg" collapsedWidth={0} theme="light">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
             W
@@ -46,46 +80,40 @@ export function App() {
           mode="inline"
           selectedKeys={[selected]}
           items={navigation}
-          onClick={({ key }) => setSelected(key)}
+          onClick={({ key }) => navigate(key)}
         />
       </Sider>
       <Layout>
         <Header className="app-header">
           <Text strong>管理台</Text>
-          <Text type="secondary">单企业实例</Text>
+          <span className="admin-session">
+            <Text type="secondary">{session.username}</Text>
+            <Button
+              type="text"
+              icon={<LogoutOutlined />}
+              aria-label="退出登录"
+              onClick={() => void logout()}
+            />
+          </span>
         </Header>
         <Content className="app-content">
-          {selected === "knowledge" ? (
-            <KnowledgePage />
-          ) : selected === "mcp" ? (
-            <McpPage />
-          ) : (
-            <>
-              <section className="content-heading">
-                <Title level={2}>概览</Title>
-                <Paragraph type="secondary">服务接入后，这里将显示实例运行状态。</Paragraph>
-              </section>
-
-              <section aria-labelledby="service-status-heading">
-                <Title id="service-status-heading" level={3}>
-                  系统状态
-                </Title>
-                <div className="status-list">
-                  {serviceStatuses.map((service) => (
-                    <div className="status-row" key={service.name}>
-                      <Space size={10}>
-                        <Badge status={service.status} />
-                        <Text strong>{service.name}</Text>
-                      </Space>
-                      <Text type="secondary">{service.detail}</Text>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </>
-          )}
+          <Page selected={selected} />
         </Content>
       </Layout>
     </Layout>
   );
+}
+
+function Page({ selected }: { selected: string }) {
+  if (selected === "employees") return <EmployeesPage />;
+  if (selected === "knowledge") return <KnowledgePage />;
+  if (selected === "mcp") return <McpPage />;
+  if (selected === "audit") return <AuditPage />;
+  if (selected === "settings") return <SettingsPage />;
+  return <OverviewPage />;
+}
+
+function initialPage() {
+  const key = window.location.pathname.split("/").filter(Boolean)[0] ?? "overview";
+  return navigation.some((item) => item.key === key) ? key : "overview";
 }

@@ -58,7 +58,8 @@ def create_provider_router() -> APIRouter:
     async def test_setting(provider_kind: ProviderKind, request: Request) -> ConnectionTestResponse:
         repository: ModelSettingsRepository = request.app.state.model_settings_repository
         setting = await repository.get(provider_kind)
-        timeout = request.app.state.settings.provider_test_timeout_seconds
+        runtime_setting = await request.app.state.runtime_settings_repository.get()
+        timeout = runtime_setting.provider_test_timeout_seconds
         try:
             if provider_kind == "chat":
                 provider = OpenAICompatibleChatProvider(

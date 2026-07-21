@@ -4,6 +4,7 @@ from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 
 from mock_oa_service.domain import (
     LeaveBalance,
@@ -21,6 +22,15 @@ def create_mcp_server(repository: Callable[[], LeaveRepository]) -> FastMCP[None
         streamable_http_path="/mcp",
         stateless_http=False,
         json_response=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "mock-oa:*"],
+            allowed_origins=[
+                "http://127.0.0.1:*",
+                "http://localhost:*",
+                "http://[::1]:*",
+            ],
+        ),
     )
 
     @server.tool(

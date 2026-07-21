@@ -3,15 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    env_file:
-      - path: .env
-        required: false
     environment:
       WORKHUB_DATA_DIR: /data/workhub
       WORKHUB_STATIC_DIR: /app/frontend-dist
       WORKHUB_HOST: 0.0.0.0
       WORKHUB_PORT: 8000
       WORKHUB_MOCK_OA_MCP_URL: http://mock-oa:8001/mcp
+      WORKHUB_MOCK_OA_SHARED_SECRET: workhub-demo-shared-secret
+      WORKHUB_BOOTSTRAP_ADMIN_USERNAME: ${WORKHUB_BOOTSTRAP_ADMIN_USERNAME:-}
+      WORKHUB_BOOTSTRAP_ADMIN_PASSWORD: ${WORKHUB_BOOTSTRAP_ADMIN_PASSWORD:-}
+      WORKHUB_SESSION_SECRET: ${WORKHUB_SESSION_SECRET:-}
     ports:
       - "8000:8000"
     volumes:
@@ -30,13 +31,12 @@ services:
     build:
       context: .
       dockerfile: mock-oa-service/Dockerfile
-    env_file:
-      - path: .env
-        required: false
     environment:
       MOCK_OA_DATA_DIR: /data/mock-oa
       MOCK_OA_HOST: 0.0.0.0
       MOCK_OA_PORT: 8001
+      MOCK_OA_ADMIN_TOKEN: mock-oa-demo-admin-token
+      MOCK_OA_WORKHUB_SHARED_SECRET: workhub-demo-shared-secret
     ports:
       - "8001:8001"
     volumes:
