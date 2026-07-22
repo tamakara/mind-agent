@@ -20,15 +20,12 @@ def test_authenticated_employee_crud_revision_and_constraints(tmp_path: Path) ->
     )
 
     with TestClient(app) as client:
-        login = client.post(
+        client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": PASSWORD},
             headers={"Origin": ORIGIN},
         )
-        write_headers = {
-            "Origin": ORIGIN,
-            "X-CSRF-Token": login.json()["csrf_token"],
-        }
+        write_headers = {"Origin": ORIGIN}
         manager = client.post(
             "/api/v1/employees",
             json={

@@ -12,7 +12,6 @@ from workhub.storage.migrations import MIGRATIONS, Migration
 pytestmark = pytest.mark.integration
 
 REQUIRED_TABLES = {
-    "admin_sessions",
     "admin_users",
     "agent_sessions",
     "audit_events",
@@ -32,6 +31,7 @@ REQUIRED_TABLES = {
     "schema_migrations",
     "session_events",
     "session_turns",
+    "instance_secrets",
 }
 
 
@@ -70,6 +70,8 @@ async def test_migrations_are_idempotent_and_connections_have_required_pragmas(
         ).fetchall()
 
     assert tables >= REQUIRED_TABLES
+    assert "admin_sessions" not in tables
+    assert "admin_login_attempts" not in tables
     assert journal_mode[0] == "wal"
     assert foreign_keys[0] == 1
     assert busy_timeout[0] == 2_500

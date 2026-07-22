@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -15,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from workhub.audit import AuditWriter
 from workhub.auth import AuthService, get_or_create_instance_secret
-from workhub.auth.api import CSRF_COOKIE, SESSION_COOKIE, create_auth_router
+from workhub.auth.api import TOKEN_COOKIE, create_auth_router
 from workhub.config import WorkHubSettings
 from workhub.confirmations import ConfirmationService, PendingActionRepository
 from workhub.context import RecallService, ScrollBuilder, ScrollRepository
@@ -113,7 +112,7 @@ async def _admin_guard(request: Request, settings: WorkHubSettings) -> JSONRespo
     if request.url.path in PUBLIC_API_PATHS:
         return None
     service: AuthService = request.app.state.auth_service
-    principal = await service.authenticate(request.cookies.get(SESSION_COOKIE))
+    principal = await service.authenticate(request.cookies.get(TOKEN_COOKIE))
     if principal is None:
         return _error_response(
             request,
@@ -122,21 +121,6 @@ async def _admin_guard(request: Request, settings: WorkHubSettings) -> JSONRespo
             message="Administrator authentication is required.",
         )
     request.state.admin = principal
-    if request.method in UNSAFE_METHODS:
-        cookie_token = request.cookies.get(CSRF_COOKIE)
-        header_token = request.headers.get("X-CSRF-Token")
-        if (
-            not cookie_token
-            or not header_token
-            or not secrets.compare_digest(cookie_token, header_token)
-            or not service.verify_csrf(principal, header_token)
-        ):
-            return _error_response(
-                request,
-                status_code=403,
-                code="csrf_failed",
-                message="CSRF validation failed.",
-            )
     return None
 
 
@@ -162,14 +146,12 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         )
         await asyncio.wait_for(database.migrate(), timeout=settings.startup_timeout_seconds)
         audit = AuditWriter(database)
-        session_secret = await get_or_create_instance_secret(database, "admin_session_hmac")
+        jwt_signing_key = await get_or_create_instance_secret(database, "admin_jwt_signing_key")
         auth_service = AuthService(
             database,
             audit,
-            session_ttl_seconds=settings.admin_session_ttl_seconds,
-            login_window_seconds=settings.admin_login_window_seconds,
-            login_max_attempts=settings.admin_login_max_attempts,
-            session_secret=session_secret,
+            token_ttl_seconds=settings.admin_session_ttl_seconds,
+            signing_key=jwt_signing_key,
         )
         bootstrap_password = (
             settings.admin_password.get_secret_value()

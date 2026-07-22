@@ -1,5 +1,4 @@
 export const API_PREFIX = "/api/v1";
-const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export interface ApiErrorBody {
   code: string;
@@ -55,13 +54,6 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const prefix = `${encodeURIComponent(name)}=`;
-  const cookie = document.cookie.split("; ").find((item) => item.startsWith(prefix));
-  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
-}
-
 export class ApiClient {
   constructor(private readonly baseUrl = "") {}
 
@@ -75,12 +67,6 @@ export class ApiClient {
     ) {
       headers.set("Content-Type", "application/json");
     }
-    const method = (init.method ?? "GET").toUpperCase();
-    if (UNSAFE_METHODS.has(method) && !headers.has("X-CSRF-Token")) {
-      const csrfToken = readCookie("workhub_csrf");
-      if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
-    }
-
     const response = await fetch(`${this.baseUrl}${API_PREFIX}${normalizedPath}`, {
       ...init,
       headers,

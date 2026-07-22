@@ -21,12 +21,12 @@ def test_authenticated_knowledge_crud_and_revision_contract(tmp_path: Path) -> N
 
     with TestClient(app) as client:
         assert client.get("/api/v1/knowledge/nodes").status_code == 401
-        login = client.post(
+        client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": PASSWORD},
             headers={"Origin": ORIGIN},
         )
-        headers = {"Origin": ORIGIN, "X-CSRF-Token": login.json()["csrf_token"]}
+        headers = {"Origin": ORIGIN}
         directory = client.post(
             "/api/v1/knowledge/nodes",
             json={"name": "policies", "node_type": "directory"},

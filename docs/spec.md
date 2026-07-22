@@ -275,7 +275,7 @@ REST API 至少按领域分组：
 - `/api/v1/settings/models/*`；
 - `/api/v1/feishu/status`。
 
-- 管理 API MUST 使用认证、CSRF/同源防护和适当限速；
+- 管理 API MUST 使用 HttpOnly JWT 认证、严格 Origin 防护；管理员密码必须使用强哈希保存。
 - 列表 MUST 分页，更新 MUST 使用 revision 或等价的乐观并发控制；
 - 密钥、headers、action token、完整敏感工具参数和飞书凭据 MUST NOT 出现在响应、日志或审计正文；
 - Web MUST NOT 提供 Agent 测试聊天、业务审批或任意 MCP 调用入口。

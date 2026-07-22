@@ -328,7 +328,7 @@ MCP                  # 客户端、发现工具、白名单和策略
 └── 飞书状态          # 只读连接状态与待绑定身份入口
 ```
 
-员工页不展示任意用户文件；知识页保存使用 revision 防止覆盖；MCP 页默认把新工具显示为 deny；审计页展示脱敏摘要。所有写 API 经过管理员 Session、CSRF/同源检查、参数验证和 repository，不直接执行 SQL。
+员工页不展示任意用户文件；知识页保存使用 revision 防止覆盖；MCP 页默认把新工具显示为 deny；审计页展示脱敏摘要。所有写 API 经过管理员 JWT、Origin 检查、参数验证和 repository，不直接执行 SQL。
 
 ## 12. 配置、数据库与部署
 
@@ -337,7 +337,7 @@ MCP                  # 客户端、发现工具、白名单和策略
 `app.db` 是 WorkHub 状态真相来源，至少包含：
 
 ```text
-schema_migrations, admin_users, admin_sessions,
+schema_migrations, admin_users, instance_secrets,
 employees, channel_identities, agent_sessions,
 session_turns, session_events, processed_channel_events,
 pending_actions, model_settings, feishu_settings,

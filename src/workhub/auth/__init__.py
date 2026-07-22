@@ -4,14 +4,12 @@ from workhub.auth.service import (
     AdminPrincipal,
     AuthService,
     InvalidCredentialsError,
-    LoginRateLimitedError,
 )
 
 __all__ = [
     "AdminPrincipal",
     "AuthService",
     "InvalidCredentialsError",
-    "LoginRateLimitedError",
     "ScryptPasswordHasher",
     "get_or_create_instance_secret",
 ]

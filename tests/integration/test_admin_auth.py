@@ -3,6 +3,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import jwt
 from fastapi.testclient import TestClient
 
 from workhub.app import create_app
@@ -23,7 +24,7 @@ def _settings(tmp_path: Path, **overrides: object) -> WorkHubSettings:
     return WorkHubSettings(**values)
 
 
-def test_admin_bootstrap_login_session_csrf_and_logout(tmp_path: Path) -> None:
+def test_admin_bootstrap_login_jwt_origin_and_logout(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path))
 
     with TestClient(app) as client:
@@ -38,14 +39,9 @@ def test_admin_bootstrap_login_session_csrf_and_logout(tmp_path: Path) -> None:
             json={"username": "admin", "password": PASSWORD},
             headers={"Origin": ORIGIN},
         )
-        csrf_token = login.json()["csrf_token"]
         session = client.get("/api/v1/auth/session")
-        missing_origin = client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf_token})
-        missing_csrf = client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN})
-        logout = client.post(
-            "/api/v1/auth/logout",
-            headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token},
-        )
+        missing_origin = client.post("/api/v1/auth/logout")
+        logout = client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN})
         expired_session = client.get("/api/v1/auth/session")
 
     assert status.json() == {"initialized": True}
@@ -53,18 +49,59 @@ def test_admin_bootstrap_login_session_csrf_and_logout(tmp_path: Path) -> None:
     assert invalid_origin.json()["error"]["code"] == "origin_forbidden"
     assert login.status_code == 200
     assert login.json()["username"] == "admin"
-    assert "workhub_admin_session" in login.headers["set-cookie"]
+    assert "workhub_admin_token" in login.headers["set-cookie"]
     assert "HttpOnly" in login.headers["set-cookie"]
     assert "SameSite=strict" in login.headers["set-cookie"]
+    assert "csrf_token" not in login.json()
     assert session.status_code == 200
     assert missing_origin.json()["error"]["code"] == "origin_forbidden"
-    assert missing_csrf.json()["error"]["code"] == "csrf_failed"
     assert logout.status_code == 204
     assert expired_session.status_code == 401
 
 
-def test_login_rate_limit_and_audit_do_not_store_password(tmp_path: Path) -> None:
-    settings = _settings(tmp_path, admin_login_max_attempts=2)
+def test_jwt_contains_required_claims_and_rejects_tampering(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": PASSWORD},
+            headers={"Origin": ORIGIN},
+        )
+        token = login.cookies.get("workhub_admin_token")
+        assert token is not None
+        payload = jwt.decode(token, options={"verify_signature": False})
+        client.cookies.set("workhub_admin_token", f"{token[:-1]}x")
+        tampered = client.get("/api/v1/auth/session")
+
+    assert {"sub", "username", "iat", "exp", "jti"} <= payload.keys()
+    assert payload["username"] == "admin"
+    assert "password" not in payload
+    assert tampered.status_code == 401
+
+
+def test_jwt_remains_valid_after_restart(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    first_app = create_app(settings)
+    with TestClient(first_app) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": PASSWORD},
+            headers={"Origin": ORIGIN},
+        )
+        token = login.cookies.get("workhub_admin_token")
+        assert token is not None
+
+    second_app = create_app(settings)
+    with TestClient(second_app) as client:
+        client.cookies.set("workhub_admin_token", token)
+        session = client.get("/api/v1/auth/session")
+
+    assert session.status_code == 200
+    assert session.json()["username"] == "admin"
+
+
+def test_failed_login_audit_does_not_store_password(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
     app = create_app(settings)
 
     with TestClient(app) as client:
@@ -77,13 +114,10 @@ def test_login_rate_limit_and_audit_do_not_store_password(tmp_path: Path) -> Non
             for _ in range(3)
         ]
 
-    assert [response.status_code for response in responses] == [401, 401, 429]
-    assert responses[-1].json()["error"]["code"] == "login_rate_limited"
+    assert [response.status_code for response in responses] == [401, 401, 401]
 
     with sqlite3.connect(settings.data_dir / "app.db") as connection:
         summaries = [row[0] for row in connection.execute("SELECT summary_json FROM audit_events")]
-        attempts = connection.execute("SELECT COUNT(*) FROM admin_login_attempts").fetchone()[0]
-    assert attempts == 2
     assert summaries
     assert "incorrect-password" not in json.dumps(summaries)
     assert PASSWORD not in json.dumps(summaries)

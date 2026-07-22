@@ -22,12 +22,12 @@ def _app(tmp_path: Path):
 
 
 def _headers(client: TestClient) -> dict[str, str]:
-    login = client.post(
+    client.post(
         "/api/v1/auth/login",
         json={"username": "admin", "password": PASSWORD},
         headers={"Origin": ORIGIN},
     )
-    return {"Origin": ORIGIN, "X-CSRF-Token": login.json()["csrf_token"]}
+    return {"Origin": ORIGIN}
 
 
 def test_runtime_settings_are_revisioned_and_applied(tmp_path: Path) -> None:
@@ -115,14 +115,13 @@ def test_provider_and_feishu_environment_values_are_ignored(
     assert feishu.json() is None
 
 
-def test_session_secret_is_generated_and_persisted(tmp_path: Path) -> None:
+def test_jwt_signing_key_is_generated_and_persisted(tmp_path: Path) -> None:
     app = _app(tmp_path)
     with TestClient(app) as client:
-        first = _headers(client)
-        assert first["X-CSRF-Token"]
+        _headers(client)
     with sqlite3.connect(tmp_path / "workhub" / "app.db") as connection:
         first_secret = connection.execute(
-            "SELECT secret FROM instance_secrets WHERE name = 'admin_session_hmac'"
+            "SELECT secret FROM instance_secrets WHERE name = 'admin_jwt_signing_key'"
         ).fetchone()
 
     second_app = _app(tmp_path)
@@ -135,7 +134,7 @@ def test_session_secret_is_generated_and_persisted(tmp_path: Path) -> None:
         assert login.status_code == 200
     with sqlite3.connect(tmp_path / "workhub" / "app.db") as connection:
         second_secret = connection.execute(
-            "SELECT secret FROM instance_secrets WHERE name = 'admin_session_hmac'"
+            "SELECT secret FROM instance_secrets WHERE name = 'admin_jwt_signing_key'"
         ).fetchone()
 
     assert first_secret is not None

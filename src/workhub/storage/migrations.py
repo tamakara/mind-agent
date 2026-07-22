@@ -395,11 +395,22 @@ INSTANCE_SECRETS_SCHEMA = Migration(
     ),
 )
 
+JWT_AUTH_SCHEMA = Migration(
+    version=5,
+    name="jwt_auth_schema",
+    statements=(
+        "DROP TABLE IF EXISTS admin_sessions",
+        "DROP TABLE IF EXISTS admin_login_attempts",
+        "DELETE FROM instance_secrets WHERE name = 'admin_session_hmac'",
+    ),
+)
+
 MIGRATIONS = (
     INITIAL_SCHEMA,
     P5_CONFIRMATION_SCHEMA,
     RUNTIME_SETTINGS_SCHEMA,
     INSTANCE_SECRETS_SCHEMA,
+    JWT_AUTH_SCHEMA,
 )
 
 

@@ -22,12 +22,12 @@ def test_provider_configuration_is_revisioned_and_secret_is_never_returned(
     )
 
     with TestClient(app) as client:
-        login = client.post(
+        client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": PASSWORD},
             headers={"Origin": ORIGIN},
         )
-        headers = {"Origin": ORIGIN, "X-CSRF-Token": login.json()["csrf_token"]}
+        headers = {"Origin": ORIGIN}
         created = client.put(
             "/api/v1/providers/chat",
             json={

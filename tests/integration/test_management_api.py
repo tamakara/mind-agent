@@ -22,12 +22,12 @@ def test_overview_and_filtered_audit_are_authenticated_and_redacted(tmp_path: Pa
     )
     with TestClient(app) as client:
         assert client.get("/api/v1/overview").status_code == 401
-        login = client.post(
+        client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": PASSWORD},
             headers={"Origin": ORIGIN},
         )
-        headers = {"Origin": ORIGIN, "X-CSRF-Token": login.json()["csrf_token"]}
+        headers = {"Origin": ORIGIN}
         employee = client.post(
             "/api/v1/employees",
             json={
