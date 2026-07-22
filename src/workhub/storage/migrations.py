@@ -381,7 +381,26 @@ RUNTIME_SETTINGS_SCHEMA = Migration(
     ),
 )
 
-MIGRATIONS = (INITIAL_SCHEMA, P5_CONFIRMATION_SCHEMA, RUNTIME_SETTINGS_SCHEMA)
+INSTANCE_SECRETS_SCHEMA = Migration(
+    version=4,
+    name="instance_secrets_schema",
+    statements=(
+        """
+        CREATE TABLE instance_secrets (
+            name TEXT PRIMARY KEY,
+            secret TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+    ),
+)
+
+MIGRATIONS = (
+    INITIAL_SCHEMA,
+    P5_CONFIRMATION_SCHEMA,
+    RUNTIME_SETTINGS_SCHEMA,
+    INSTANCE_SECRETS_SCHEMA,
+)
 
 
 async def apply_migrations(database: "Database") -> None:

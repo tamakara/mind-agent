@@ -23,16 +23,13 @@ def test_mock_oa_is_an_independent_workspace_package() -> None:
     assert mock_oa_config["project"]["requires-python"] == ">=3.12,<3.13"
 
 
-def test_environment_example_covers_bootstrap_contract() -> None:
-    entries = {
-        key: value
-        for line in (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#")
-        for key, value in [line.split("=", maxsplit=1)]
-    }
+def test_compose_covers_fixed_startup_contract() -> None:
+    compose = (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
-    assert {
-        "WORKHUB_BOOTSTRAP_ADMIN_USERNAME",
-        "WORKHUB_BOOTSTRAP_ADMIN_PASSWORD",
-        "WORKHUB_SESSION_SECRET",
-    } <= entries.keys()
+    assert "WORKHUB_DATA_DIR: /data/workhub" in compose
+    assert "WORKHUB_ADMIN_USERNAME: admin" in compose
+    assert "WORKHUB_ADMIN_PASSWORD: password" in compose
+    assert "WORKHUB_MOCK_OA_SHARED_SECRET: workhub-demo-shared-secret" in compose
+    assert "MOCK_OA_WORKHUB_SHARED_SECRET: workhub-demo-shared-secret" in compose
+    assert "WORKHUB_SESSION_SECRET" not in compose
+    assert "WORKHUB_BOOTSTRAP_ADMIN" not in compose

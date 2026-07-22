@@ -2,7 +2,7 @@
 
 WorkHub separates fixed process settings from runtime settings.
 
-Compose supplies `WORKHUB_DATA_DIR`, `WORKHUB_STATIC_DIR`, `WORKHUB_HOST`, `WORKHUB_PORT`, the Mock OA URL and demo shared secret. The only expected environment values are secure administrator bootstrap credentials and the session secret.
+Compose supplies `WORKHUB_DATA_DIR`, `WORKHUB_STATIC_DIR`, `WORKHUB_HOST`, `WORKHUB_PORT`, the Mock OA URL and demo shared secret. The only expected environment values are secure administrator bootstrap credentials. The Session HMAC secret is generated once and persisted in `app.db`.
 
 Chat, Embedding, Feishu credentials and runtime values are stored in `app.db` and edited under the Web Settings page. Runtime values include Provider/Agent/MCP timeouts, Agent iteration and context limits, confirmation TTL, and Feishu reconnect settings.
 

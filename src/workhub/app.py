@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from workhub.audit import AuditWriter
-from workhub.auth import AuthService
+from workhub.auth import AuthService, get_or_create_instance_secret
 from workhub.auth.api import CSRF_COOKIE, SESSION_COOKIE, create_auth_router
 from workhub.config import WorkHubSettings
 from workhub.confirmations import ConfirmationService, PendingActionRepository
@@ -162,25 +162,22 @@ def create_app(settings: WorkHubSettings | None = None) -> FastAPI:
         )
         await asyncio.wait_for(database.migrate(), timeout=settings.startup_timeout_seconds)
         audit = AuditWriter(database)
+        session_secret = await get_or_create_instance_secret(database, "admin_session_hmac")
         auth_service = AuthService(
             database,
             audit,
             session_ttl_seconds=settings.admin_session_ttl_seconds,
             login_window_seconds=settings.admin_login_window_seconds,
             login_max_attempts=settings.admin_login_max_attempts,
-            session_secret=(
-                settings.session_secret.get_secret_value()
-                if settings.session_secret is not None
-                else None
-            ),
+            session_secret=session_secret,
         )
         bootstrap_password = (
-            settings.bootstrap_admin_password.get_secret_value()
-            if settings.bootstrap_admin_password is not None
+            settings.admin_password.get_secret_value()
+            if settings.admin_password is not None
             else None
         )
         await asyncio.wait_for(
-            auth_service.bootstrap(settings.bootstrap_admin_username, bootstrap_password),
+            auth_service.bootstrap(settings.admin_username, bootstrap_password),
             timeout=settings.startup_timeout_seconds,
         )
         app.state.database = database

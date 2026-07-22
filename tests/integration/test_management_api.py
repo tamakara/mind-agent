@@ -16,9 +16,8 @@ def test_overview_and_filtered_audit_are_authenticated_and_redacted(tmp_path: Pa
         WorkHubSettings(
             data_dir=tmp_path / "workhub",
             static_dir=tmp_path / "frontend-not-built",
-            bootstrap_admin_username="admin",
-            bootstrap_admin_password=PASSWORD,
-            session_secret="test-session-secret-with-enough-entropy",
+            admin_username="admin",
+            admin_password=PASSWORD,
         )
     )
     with TestClient(app) as client:

@@ -64,7 +64,9 @@ async def test_migrations_are_idempotent_and_connections_have_required_pragmas(
         foreign_keys = await (await connection.execute("PRAGMA foreign_keys")).fetchone()
         busy_timeout = await (await connection.execute("PRAGMA busy_timeout")).fetchone()
         migrations = await (
-            await connection.execute("SELECT version, name FROM schema_migrations")
+                await connection.execute(
+                    "SELECT version, name FROM schema_migrations ORDER BY version"
+                )
         ).fetchall()
 
     assert tables >= REQUIRED_TABLES

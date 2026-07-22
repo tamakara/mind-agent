@@ -2,7 +2,7 @@
 
 ## Runtime configuration
 
-Compose starts with fixed data paths, ports, the Mock OA URL and demo shared secret. It does not require a `.env` file to start. Keep the administrator bootstrap username/password and session secret in environment variables for the first secure login.
+Compose starts with fixed data paths, ports, the Mock OA URL and demo shared secret. It does not require a `.env` file to start. Keep only the administrator bootstrap username/password in environment variables for the first secure login; the Session HMAC secret is generated and persisted automatically.
 
 After login, configure Chat, Embedding and Feishu under Settings. Reconnect intervals, Provider/Agent/MCP timeouts, iteration limits, context budget and confirmation TTL are stored in `app.db`. Changes are revisioned, audited, redacted and hot-applied to subsequent runs without restarting containers.
 
@@ -53,7 +53,7 @@ docker compose ps
 
 前端本地开发使用 `npm run dev`，Vite 会将 `/api`、`/healthz` 和 `/readyz` 代理到本机 `8000` 端口。生产环境不需要单独部署前端容器。
 
-首次启动时，WorkHub 使用 `WORKHUB_BOOTSTRAP_ADMIN_USERNAME` 和 `WORKHUB_BOOTSTRAP_ADMIN_PASSWORD` 原子创建唯一初始管理员；数据库已有管理员后不会再次引导。管理 API 默认要求持久 Session、同源 Origin 和 CSRF 请求头。通过 HTTPS 部署时必须设置 `WORKHUB_ADMIN_COOKIE_SECURE=true`。
+首次启动时，WorkHub 使用 `WORKHUB_ADMIN_USERNAME` 和 `WORKHUB_ADMIN_PASSWORD` 原子创建唯一初始管理员；数据库已有管理员后不会再次引导。管理 API 默认要求持久 Session、同源 Origin 和 CSRF 请求头。通过 HTTPS 部署时必须设置 `WORKHUB_ADMIN_COOKIE_SECURE=true`。
 
 不使用容器时，先安装 Python 3.12、uv 和 Node.js，再执行：
 

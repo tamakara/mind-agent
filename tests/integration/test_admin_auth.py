@@ -16,8 +16,8 @@ def _settings(tmp_path: Path, **overrides: object) -> WorkHubSettings:
     values: dict[str, object] = {
         "data_dir": tmp_path / "workhub",
         "static_dir": tmp_path / "frontend-not-built",
-        "bootstrap_admin_username": "admin",
-        "bootstrap_admin_password": PASSWORD,
+        "admin_username": "admin",
+        "admin_password": PASSWORD,
     }
     values.update(overrides)
     return WorkHubSettings(**values)

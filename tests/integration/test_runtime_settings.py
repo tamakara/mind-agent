@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -14,9 +15,8 @@ def _app(tmp_path: Path):
         WorkHubSettings(
             data_dir=tmp_path / "workhub",
             static_dir=tmp_path / "frontend-not-built",
-            bootstrap_admin_username="admin",
-            bootstrap_admin_password=PASSWORD,
-            session_secret="test-session-secret-with-enough-entropy",
+            admin_username="admin",
+            admin_password=PASSWORD,
         )
     )
 
@@ -113,3 +113,31 @@ def test_provider_and_feishu_environment_values_are_ignored(
 
     assert providers.json() == []
     assert feishu.json() is None
+
+
+def test_session_secret_is_generated_and_persisted(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        first = _headers(client)
+        assert first["X-CSRF-Token"]
+    with sqlite3.connect(tmp_path / "workhub" / "app.db") as connection:
+        first_secret = connection.execute(
+            "SELECT secret FROM instance_secrets WHERE name = 'admin_session_hmac'"
+        ).fetchone()
+
+    second_app = _app(tmp_path)
+    with TestClient(second_app) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": PASSWORD},
+            headers={"Origin": ORIGIN},
+        )
+        assert login.status_code == 200
+    with sqlite3.connect(tmp_path / "workhub" / "app.db") as connection:
+        second_secret = connection.execute(
+            "SELECT secret FROM instance_secrets WHERE name = 'admin_session_hmac'"
+        ).fetchone()
+
+    assert first_secret is not None
+    assert first_secret == second_secret
+    assert len(first_secret[0]) >= 48

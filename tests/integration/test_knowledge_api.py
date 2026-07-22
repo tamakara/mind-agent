@@ -14,9 +14,8 @@ def test_authenticated_knowledge_crud_and_revision_contract(tmp_path: Path) -> N
         WorkHubSettings(
             data_dir=tmp_path / "workhub",
             static_dir=tmp_path / "frontend-not-built",
-            bootstrap_admin_username="admin",
-            bootstrap_admin_password=PASSWORD,
-            session_secret="test-session-secret-with-enough-entropy",
+            admin_username="admin",
+            admin_password=PASSWORD,
         )
     )
 
