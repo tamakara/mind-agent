@@ -8,7 +8,7 @@ from typing import Any
 import jwt
 
 from workhub.audit import AuditEvent, AuditWriter
-from workhub.auth.passwords import ScryptPasswordHasher
+from workhub.auth.passwords import PasswordHasher
 from workhub.domain import format_rfc3339, new_uuid4, utc_now
 from workhub.errors import ApplicationError
 from workhub.storage import Database
@@ -47,7 +47,7 @@ class AuthService:
         self.token_ttl = timedelta(seconds=token_ttl_seconds)
         self.signing_key = signing_key
         self.clock = clock
-        self.passwords = ScryptPasswordHasher()
+        self.passwords = PasswordHasher()
         self._dummy_password_hash = self.passwords.hash("not-a-real-password")
 
     async def bootstrap(self, username: str | None, password: str | None) -> bool:
@@ -176,7 +176,7 @@ class AuthService:
         if not token:
             return None
         try:
-            return jwt.decode(
+            payload = jwt.decode(
                 token,
                 self.signing_key,
                 algorithms=["HS256"],
@@ -185,6 +185,10 @@ class AuthService:
                     "require": ["sub", "username", "iat", "exp", "jti"],
                 },
             )
+            # Reject non-canonical base64url encodings that decode to the same payload.
+            if jwt.encode(payload, self.signing_key, algorithm="HS256") != token:
+                return None
+            return payload
         except jwt.PyJWTError:
             return None
 

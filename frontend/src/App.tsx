@@ -7,10 +7,12 @@ import {
   SettingOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Layout, Menu, Spin, Typography } from "antd";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { apiClient, WorkHubApiError } from "./api/client";
+import { apiClient } from "./api/client";
 import { AuditPage } from "./audit/AuditPage";
 import { type AdminSession, LoginPage } from "./auth/LoginPage";
 import { EmployeesPage } from "./employees/EmployeesPage";
@@ -23,62 +25,73 @@ const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
 
 const navigation = [
-  { key: "overview", icon: <DashboardOutlined />, label: "概览" },
-  { key: "employees", icon: <TeamOutlined />, label: "员工" },
-  { key: "knowledge", icon: <BookOutlined />, label: "知识库" },
-  { key: "mcp", icon: <ApiOutlined />, label: "MCP" },
-  { key: "audit", icon: <AuditOutlined />, label: "审计" },
-  { key: "settings", icon: <SettingOutlined />, label: "设置" },
+  { key: "/", icon: <DashboardOutlined />, label: "概览" },
+  { key: "/employees", icon: <TeamOutlined />, label: "员工" },
+  { key: "/knowledge", icon: <BookOutlined />, label: "知识库" },
+  { key: "/mcp", icon: <ApiOutlined />, label: "MCP" },
+  { key: "/audit", icon: <AuditOutlined />, label: "审计" },
+  { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ];
 
 export function App() {
-  const [session, setSession] = useState<AdminSession | null | undefined>(undefined);
-  const [selected, setSelected] = useState(initialPage);
+  const [appQueryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false } } }),
+  );
+  return (
+    <QueryClientProvider client={appQueryClient}>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
 
-  useEffect(() => {
-    void apiClient
-      .request<AdminSession>("auth/session")
-      .then(setSession)
-      .catch((reason: unknown) => {
-        if (reason instanceof WorkHubApiError && reason.status === 401) setSession(null);
-        else setSession(null);
-      });
-  }, []);
+function AppContent() {
+  const queryClient = useQueryClient();
+  const session = useQuery<AdminSession | null>({
+    queryKey: ["auth", "session"],
+    queryFn: () => apiClient.request<AdminSession>("auth/session"),
+    retry: false,
+    throwOnError: false,
+  });
 
-  if (session === undefined)
+  if (session.isPending) {
     return (
       <main className="session-loading">
         <Spin size="large" />
       </main>
     );
-  if (session === null) return <LoginPage onLogin={setSession} />;
+  }
+  if (session.isError || !session.data) {
+    return <LoginPage onLogin={(value) => void queryClient.setQueryData(["auth", "session"], value)} />;
+  }
+  return <AuthenticatedApp session={session.data} />;
+}
+
+function AuthenticatedApp({ session }: { session: AdminSession }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
 
   async function logout() {
     try {
       await apiClient.request("auth/logout", { method: "POST" });
     } finally {
-      setSession(null);
+      queryClient.setQueryData(["auth", "session"], null);
+      navigate("/", { replace: true });
     }
-  }
-
-  function navigate(key: string) {
-    setSelected(key);
-    const path = key === "overview" ? "/" : `/${key}`;
-    window.history.pushState({}, "", path);
   }
 
   return (
     <Layout className="app-shell">
       <Sider className="app-sider" width={216} breakpoint="lg" collapsedWidth={0} theme="light">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            W
-          </span>
+          <span className="brand-mark" aria-hidden="true">W</span>
           <span>WorkHub</span>
         </div>
         <Menu
           mode="inline"
-          selectedKeys={[selected]}
+          selectedKeys={[location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`]}
           items={navigation}
           onClick={({ key }) => navigate(key)}
         />
@@ -88,32 +101,21 @@ export function App() {
           <Text strong>管理台</Text>
           <span className="admin-session">
             <Text type="secondary">{session.username}</Text>
-            <Button
-              type="text"
-              icon={<LogoutOutlined />}
-              aria-label="退出登录"
-              onClick={() => void logout()}
-            />
+            <Button type="text" icon={<LogoutOutlined />} aria-label="退出登录" onClick={() => void logout()} />
           </span>
         </Header>
         <Content className="app-content">
-          <Page selected={selected} />
+          <Routes>
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/knowledge" element={<KnowledgePage />} />
+            <Route path="/mcp" element={<McpPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </Content>
       </Layout>
     </Layout>
   );
-}
-
-function Page({ selected }: { selected: string }) {
-  if (selected === "employees") return <EmployeesPage />;
-  if (selected === "knowledge") return <KnowledgePage />;
-  if (selected === "mcp") return <McpPage />;
-  if (selected === "audit") return <AuditPage />;
-  if (selected === "settings") return <SettingsPage />;
-  return <OverviewPage />;
-}
-
-function initialPage() {
-  const key = window.location.pathname.split("/").filter(Boolean)[0] ?? "overview";
-  return navigation.some((item) => item.key === key) ? key : "overview";
 }

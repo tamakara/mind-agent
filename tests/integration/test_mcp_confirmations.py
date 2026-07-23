@@ -228,15 +228,11 @@ async def test_connection_failure_is_isolated_and_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class BrokenConnection:
-        def __init__(self, *_: object, **__: object) -> None:
-            self.closed = False
-
-        async def discover(self) -> list[dict[str, Any]]:
+        @classmethod
+        async def connect(cls, *_: object, **__: object) -> "BrokenConnection":
             raise ConnectionError("offline")
 
-        async def close(self, *, force: bool = False) -> None:
-            assert force is True
-            self.closed = True
+        async def close(self, *, force: bool = False) -> None: ...
 
     monkeypatch.setattr(mcp_manager_module, "_Connection", BrokenConnection)
     database = Database(tmp_path / "app.db")

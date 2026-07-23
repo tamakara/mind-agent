@@ -1,30 +1,8 @@
 import json
 import logging
-from collections.abc import Mapping
 from typing import Any
 
-SENSITIVE_KEYS = frozenset(
-    {
-        "authorization",
-        "cookie",
-        "password",
-        "secret",
-        "token",
-        "api_key",
-        "app_secret",
-        "headers",
-    }
-)
-
-
-def redact(value: Any, *, key: str | None = None) -> Any:
-    if key is not None and any(part in key.lower() for part in SENSITIVE_KEYS):
-        return "[REDACTED]"
-    if isinstance(value, Mapping):
-        return {str(item_key): redact(item, key=str(item_key)) for item_key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [redact(item) for item in value]
-    return value
+from workhub.redaction import redact_sensitive
 
 
 class JsonFormatter(logging.Formatter):
@@ -40,7 +18,7 @@ class JsonFormatter(logging.Formatter):
                 payload[name] = getattr(record, name)
         if record.exc_info and record.exc_info[0] is not None:
             payload["exception"] = record.exc_info[0].__name__
-        return json.dumps(redact(payload), ensure_ascii=True, separators=(",", ":"))
+        return json.dumps(redact_sensitive(payload), ensure_ascii=True, separators=(",", ":"))
 
 
 def configure_logging(level: str) -> None:

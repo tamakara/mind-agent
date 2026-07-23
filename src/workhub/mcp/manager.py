@@ -5,8 +5,9 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from jsonschema import Draft202012Validator, SchemaError
+from mcp import ClientSessionGroup
+from mcp.client.session_group import ClientSessionParameters, StreamableHttpParameters
 
 from workhub.domain import ActorContext, ToolDescriptor
 from workhub.domain.tools import inject_trusted_actor
@@ -33,89 +34,59 @@ class ClientHealth:
     error_code: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class _CallCommand:
-    name: str
-    arguments: dict[str, Any]
-    future: asyncio.Future[Any]
-
-
 class _Connection:
-    def __init__(self, stored: StoredMcpClient, *, timeout_seconds: float) -> None:
+    def __init__(
+        self, stored: StoredMcpClient, group: ClientSessionGroup, *, timeout_seconds: float
+    ) -> None:
         self.stored = stored
-        self.timeout_seconds = timeout_seconds
-        loop = asyncio.get_running_loop()
-        self._ready: asyncio.Future[list[dict[str, Any]]] = loop.create_future()
-        self._commands: asyncio.Queue[_CallCommand | None] = asyncio.Queue()
-        self._task = asyncio.create_task(self._run(), name=f"mcp-client-{stored.public.client_key}")
+        self.group = group
+        self._timeout_seconds = timeout_seconds
+
+    @classmethod
+    async def connect(cls, stored: StoredMcpClient, *, timeout_seconds: float) -> "_Connection":
+        group = ClientSessionGroup()
+        await group.__aenter__()
+        try:
+            await group.connect_to_server(
+                StreamableHttpParameters(
+                    url=str(stored.public.url),
+                    headers=stored.headers,
+                    timeout=timedelta(seconds=timeout_seconds),
+                    sse_read_timeout=timedelta(seconds=timeout_seconds),
+                ),
+                ClientSessionParameters(
+                    read_timeout_seconds=timedelta(seconds=timeout_seconds)
+                ),
+            )
+        except BaseException:
+            await group.__aexit__(None, None, None)
+            raise
+        return cls(stored, group, timeout_seconds=timeout_seconds)
 
     async def discover(self) -> list[dict[str, Any]]:
-        return await self._ready
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.inputSchema,
+            }
+            for tool in self.group.tools.values()
+        ]
 
     async def call(self, name: str, arguments: dict[str, Any]) -> Any:
-        if self._task.done():
-            raise RuntimeError("MCP client connection is closed")
-        future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
-        await self._commands.put(_CallCommand(name, arguments, future))
-        return await future
+        return await self.group.call_tool(
+            name,
+            arguments,
+            read_timeout_seconds=timedelta(seconds=self.group_timeout),
+        )
+
+    @property
+    def group_timeout(self) -> float:
+        return self._timeout_seconds
 
     async def close(self, *, force: bool = False) -> None:
-        if force and not self._task.done():
-            self._task.cancel()
-        elif not self._task.done():
-            await self._commands.put(None)
-        await asyncio.gather(self._task, return_exceptions=True)
+        await self.group.__aexit__(None, None, None)
 
-    async def _run(self) -> None:
-        failure: BaseException | None = None
-        try:
-            async with (
-                streamablehttp_client(
-                    str(self.stored.public.url),
-                    headers=self.stored.headers,
-                    timeout=self.timeout_seconds,
-                    sse_read_timeout=self.timeout_seconds,
-                ) as (read_stream, write_stream, _),
-                ClientSession(read_stream, write_stream) as session,
-            ):
-                await session.initialize()
-                result = await session.list_tools()
-                discovered = [
-                    {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "input_schema": tool.inputSchema,
-                    }
-                    for tool in result.tools
-                ]
-                if not self._ready.done():
-                    self._ready.set_result(discovered)
-                while True:
-                    command = await self._commands.get()
-                    if command is None:
-                        break
-                    try:
-                        value = await session.call_tool(
-                            command.name,
-                            command.arguments,
-                            read_timeout_seconds=timedelta(seconds=self.timeout_seconds),
-                        )
-                    except Exception as exc:
-                        if not command.future.done():
-                            command.future.set_exception(exc)
-                    else:
-                        if not command.future.done():
-                            command.future.set_result(value)
-        except BaseException as exc:
-            failure = exc
-            if not self._ready.done():
-                self._ready.set_exception(exc)
-        finally:
-            unavailable = failure or RuntimeError("MCP client connection closed")
-            while not self._commands.empty():
-                command = self._commands.get_nowait()
-                if command is not None and not command.future.done():
-                    command.future.set_exception(unavailable)
 
 
 class MCPManager:
@@ -149,7 +120,7 @@ class MCPManager:
             return []
         connection: _Connection | None = None
         try:
-            connection = _Connection(stored, timeout_seconds=self.timeout_seconds)
+            connection = await _Connection.connect(stored, timeout_seconds=self.timeout_seconds)
             discovered = await asyncio.wait_for(connection.discover(), self.timeout_seconds)
             tools = await self.repository.sync_tools(stored, discovered)
             async with self._guard:
@@ -222,46 +193,23 @@ class MCPManager:
 def validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
     if not isinstance(arguments, dict):
         raise ApplicationError("invalid_tool_arguments", "Tool arguments must be an object.")
-    properties = schema.get("properties")
-    properties = properties if isinstance(properties, dict) else {}
-    required = schema.get("required")
-    if isinstance(required, list):
-        missing = [name for name in required if name not in arguments]
-        if missing:
-            raise ApplicationError(
-                "invalid_tool_arguments",
-                "Required tool arguments are missing.",
-                details=[{"fields": missing}],
-            )
-    if schema.get("additionalProperties") is False:
-        unknown = sorted(set(arguments) - set(properties))
-        if unknown:
-            raise ApplicationError(
-                "invalid_tool_arguments",
-                "Unknown tool arguments were provided.",
-                details=[{"fields": unknown}],
-            )
-    for name, value in arguments.items():
-        field = properties.get(name)
-        if not isinstance(field, dict) or not isinstance(field.get("type"), str):
-            continue
-        if not _matches_json_type(field["type"], value):
-            raise ApplicationError(
-                "invalid_tool_arguments", f"Tool argument '{name}' has an invalid type."
-            )
-
-
-def _matches_json_type(expected: str, value: Any) -> bool:
-    if expected == "string":
-        return isinstance(value, str)
-    if expected == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if expected == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    if expected == "boolean":
-        return isinstance(value, bool)
-    if expected == "object":
-        return isinstance(value, dict)
-    if expected == "array":
-        return isinstance(value, list)
-    return True
+    try:
+        validator = Draft202012Validator(schema)
+        errors = sorted(validator.iter_errors(arguments), key=lambda error: list(error.path))
+    except SchemaError as exc:
+        raise ApplicationError(
+            "invalid_tool_schema", "MCP tool schema is invalid.", status_code=502
+        ) from exc
+    if errors:
+        details = [
+            {
+                "path": [str(part) for part in error.path],
+                "message": error.message,
+            }
+            for error in errors[:10]
+        ]
+        raise ApplicationError(
+            "invalid_tool_arguments",
+            "Tool arguments do not match the MCP tool schema.",
+            details=details,
+        )

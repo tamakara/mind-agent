@@ -6,12 +6,12 @@ from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
 
-from workhub.audit import redact_audit_value
 from workhub.context import ScrollBuilder, ScrollRepository, deterministic_headline, parse_headline
 from workhub.domain import ActorContext, ChatMessage, ChatResponse, FeishuMessage
 from workhub.domain.context import ScrollWindow
 from workhub.feishu.transport import FeishuTransport
 from workhub.providers.openai import ChatProvider
+from workhub.redaction import redact_sensitive
 from workhub.runtime.prompt import SYSTEM_PROMPT, actor_prompt
 from workhub.runtime.tools import RuntimeTool, RuntimeToolContext, RuntimeToolProvider
 
@@ -173,7 +173,7 @@ class AgentRuntime:
                 state["turn_id"],
                 event_type="tool_call",
                 tool_call_id=call.call_id,
-                payload=redact_audit_value({"tool_name": call.name, "arguments": call.arguments}),
+                payload=redact_sensitive({"tool_name": call.name, "arguments": call.arguments}),
             )
             tool = tools.get(call.name)
             if tool is None:

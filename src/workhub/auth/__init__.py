@@ -1,5 +1,5 @@
 from workhub.auth.instance_secrets import get_or_create_instance_secret
-from workhub.auth.passwords import ScryptPasswordHasher
+from workhub.auth.passwords import PasswordHasher
 from workhub.auth.service import (
     AdminPrincipal,
     AuthService,
@@ -10,6 +10,6 @@ __all__ = [
     "AdminPrincipal",
     "AuthService",
     "InvalidCredentialsError",
-    "ScryptPasswordHasher",
+    "PasswordHasher",
     "get_or_create_instance_secret",
 ]

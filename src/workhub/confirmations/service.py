@@ -1,7 +1,6 @@
 import json
 from typing import Any, Literal
 
-from workhub.audit import redact_audit_value
 from workhub.confirmations.repository import ActionClaim, PendingActionRepository
 from workhub.context import ScrollRepository
 from workhub.domain import ActorContext, PendingAction
@@ -10,6 +9,7 @@ from workhub.feishu.transport import FeishuTransport
 from workhub.mcp.manager import MCPManager
 from workhub.mcp.repository import McpRepository
 from workhub.mcp.runtime import terminal_card
+from workhub.redaction import redact_sensitive
 
 
 class ConfirmationService:
@@ -105,7 +105,7 @@ class ConfirmationService:
             )
             result_summary = {
                 "is_error": result.is_error,
-                "content": redact_audit_value(result.content),
+                "content": redact_sensitive(result.content),
             }
             if result.is_error:
                 error_code = "mcp_business_error"

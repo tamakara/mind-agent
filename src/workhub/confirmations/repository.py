@@ -8,7 +8,7 @@ from uuid import UUID
 
 import aiosqlite
 
-from workhub.audit import AuditEvent, AuditWriter, redact_audit_value
+from workhub.audit import AuditEvent, AuditWriter
 from workhub.domain import (
     ActorContext,
     ChannelAddress,
@@ -20,6 +20,7 @@ from workhub.domain import (
 )
 from workhub.domain.feishu import FeishuCardAction
 from workhub.errors import ApplicationError
+from workhub.redaction import redact_sensitive
 from workhub.storage import Database
 
 
@@ -246,7 +247,7 @@ class PendingActionRepository:
         error_code: str | None = None,
     ) -> PendingAction:
         timestamp = format_rfc3339(utc_now())
-        safe_result = redact_audit_value(result_summary) if result_summary is not None else None
+        safe_result = redact_sensitive(result_summary) if result_summary is not None else None
         async with self.database.transaction(write=True) as connection:
             cursor = await connection.execute(
                 """UPDATE pending_actions SET status = ?, result_summary_json = ?, error_code = ?,

@@ -1,10 +1,10 @@
 import json
 
-from workhub.audit import redact_audit_value
+from workhub.redaction import redact_sensitive
 
 
 def test_audit_redaction_removes_credentials_tokens_and_complete_arguments() -> None:
-    redacted = redact_audit_value(
+    redacted = redact_sensitive(
         {
             "password": "administrator-password",
             "headers": {"Authorization": "Bearer credential"},

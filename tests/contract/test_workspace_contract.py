@@ -28,7 +28,7 @@ def test_compose_covers_fixed_startup_contract() -> None:
 
     assert "WORKHUB_DATA_DIR: /data/workhub" in compose
     assert "WORKHUB_ADMIN_USERNAME: admin" in compose
-    assert "WORKHUB_ADMIN_PASSWORD: password" in compose
+    assert "WORKHUB_ADMIN_PASSWORD: workhub-demo-password" in compose
     assert "WORKHUB_MOCK_OA_SHARED_SECRET: workhub-demo-shared-secret" in compose
     assert "MOCK_OA_WORKHUB_SHARED_SECRET: workhub-demo-shared-secret" in compose
     assert "WORKHUB_SESSION_SECRET" not in compose

@@ -1,4 +1,4 @@
-from workhub.observability import redact
+from workhub.redaction import redact_sensitive
 
 
 def test_redact_removes_nested_sensitive_values() -> None:
@@ -8,7 +8,7 @@ def test_redact_removes_nested_sensitive_values() -> None:
         "items": [{"action_token": "card-token"}],
     }
 
-    assert redact(value) == {
+    assert redact_sensitive(value) == {
         "api_key": "[REDACTED]",
         "nested": {"Authorization": "[REDACTED]", "ordinary": "visible"},
         "items": [{"action_token": "[REDACTED]"}],

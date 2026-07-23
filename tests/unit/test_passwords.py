@@ -1,20 +1,20 @@
-from workhub.auth import ScryptPasswordHasher
+from workhub.auth import PasswordHasher
 
 
-def test_scrypt_password_hash_is_salted_and_verifiable() -> None:
-    hasher = ScryptPasswordHasher()
+def test_argon2_password_hash_is_salted_and_verifiable() -> None:
+    hasher = PasswordHasher()
     first = hasher.hash("correct-horse-battery-staple")
     second = hasher.hash("correct-horse-battery-staple")
 
+    assert first.startswith("$argon2")
     assert first != second
-    assert "correct-horse" not in first
     assert hasher.verify("correct-horse-battery-staple", first)
     assert not hasher.verify("wrong-password", first)
     assert not hasher.verify("correct-horse-battery-staple", "malformed")
 
 
-def test_scrypt_password_hash_rejects_short_passwords() -> None:
-    hasher = ScryptPasswordHasher()
+def test_argon2_password_hash_rejects_short_passwords() -> None:
+    hasher = PasswordHasher()
 
     try:
         hasher.hash("too-short")

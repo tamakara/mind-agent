@@ -1,4 +1,3 @@
-import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -6,36 +5,8 @@ from typing import Any
 import aiosqlite
 
 from workhub.domain import format_rfc3339, new_uuid4, utc_now
+from workhub.redaction import redact_sensitive
 from workhub.storage import Database
-
-SENSITIVE_PARTS = (
-    "password",
-    "secret",
-    "token",
-    "api_key",
-    "authorization",
-    "cookie",
-    "headers",
-)
-ARGUMENT_FIELDS = frozenset({"arguments", "args", "canonical_args", "tool_arguments"})
-
-
-def redact_audit_value(value: Any, *, key: str | None = None) -> Any:
-    normalized_key = key.lower() if key else None
-    if normalized_key and any(part in normalized_key for part in SENSITIVE_PARTS):
-        return "[REDACTED]"
-    if normalized_key in ARGUMENT_FIELDS:
-        serialized = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-        keys = sorted(str(item) for item in value) if isinstance(value, dict) else []
-        return {"sha256": hashlib.sha256(serialized.encode()).hexdigest(), "keys": keys}
-    if isinstance(value, dict):
-        return {
-            str(item_key): redact_audit_value(item, key=str(item_key))
-            for item_key, item in value.items()
-        }
-    if isinstance(value, (list, tuple)):
-        return [redact_audit_value(item) for item in value]
-    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +34,7 @@ class AuditWriter:
         self, connection: aiosqlite.Connection, event: AuditEvent
     ) -> None:
         summary = json.dumps(
-            redact_audit_value(event.summary),
+            redact_sensitive(event.summary),
             ensure_ascii=True,
             sort_keys=True,
             separators=(",", ":"),
